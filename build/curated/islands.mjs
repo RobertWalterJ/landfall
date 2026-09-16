@@ -57,7 +57,7 @@ export const ISLANDS = [
   // ── Puerto Rico and the Virgins ────────────────────────────────────────
   { id: 'vieques', name: 'Vieques', parent: 'PR', lat: 18.12, lon: -65.43 },
   { id: 'culebra', name: 'Culebra', parent: 'PR', lat: 18.32, lon: -65.28 },
-  { id: 'mona', name: 'Mona', parent: 'PR', lat: 18.08, lon: -67.89 },
+  { id: 'mona', name: 'Mona', parent: 'PR', lat: 18.08, lon: -67.89, alt: ['Isla de Mona'] },
   { id: 'st-thomas', name: 'Saint Thomas', parent: 'VI', lat: 18.34, lon: -64.93 },
   { id: 'st-john', name: 'Saint John', parent: 'VI', lat: 18.33, lon: -64.73 },
   { id: 'st-croix', name: 'Saint Croix', parent: 'VI', lat: 17.73, lon: -64.78 },
@@ -103,6 +103,7 @@ export const ISLANDS = [
   { id: 'roatan', name: 'Roatán', parent: 'HN', lat: 16.35, lon: -86.45,
     note: 'The largest of the Bay Islands — English-speaking, and Honduran only since 1861.' },
   { id: 'san-andres', name: 'San Andrés', parent: 'CO', lat: 12.55, lon: -81.71,
+    alt: ['Isla de San Andrés'],
     note: 'Colombian, but 750 km from Colombia and 230 km from Nicaragua — the subject of a 2012 ICJ ruling.' },
-  { id: 'providencia', name: 'Providencia', parent: 'CO', lat: 13.35, lon: -81.37 },
+  { id: 'providencia', name: 'Providencia', parent: 'CO', lat: 13.35, lon: -81.37, alt: ['Isla de Providencia', 'Old Providence'] },
 ];

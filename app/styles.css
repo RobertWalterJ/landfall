@@ -374,10 +374,23 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .map .pos { fill: none; stroke: var(--sea); stroke-width: 1.5px; stroke-dasharray: 3 4; opacity: .7;
   vector-effect: non-scaling-stroke; }
 .map .hit { fill: transparent; }
+/* Size and halo width are set per draw in map.js, computed back through the
+   zoom — a font-size in SVG user units shrinks with the viewBox. */
 .map text.mlabel {
-  font: 600 12px var(--font-use); letter-spacing: .02em; fill: var(--ink); text-anchor: middle;
-  paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; stroke-linejoin: round;
+  font-family: var(--font-use); font-weight: 600; letter-spacing: .02em;
+  fill: var(--ink); text-anchor: middle; pointer-events: none;
+  paint-order: stroke; stroke: var(--surface-sunk); stroke-linejoin: round;
 }
+/* Label the Map. A named feature inks in and stays inked; a given one is
+   brass, so the finished chart shows what you produced and what you were told
+   without a legend having to explain it. */
+.map .feat.named { fill: var(--land-known); stroke: none; }
+.map .feat.given { fill: var(--brass-mark); stroke: none; }
+.map .feat.hi { fill: var(--sea); stroke: none; }
+.map circle.now { fill: none; stroke: var(--sea); opacity: .85; }
+.map .feat.just { animation: just 700ms var(--e-out); }
+@keyframes just { 0% { opacity: .35; } 60% { opacity: 1; } }
+
 .map .shade-unseen { fill: var(--land-unseen); }
 .map .shade-shaky { fill: var(--land-shaky); }
 .map .shade-known { fill: var(--land-known); }

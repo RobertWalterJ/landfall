@@ -126,7 +126,9 @@ export class MapView {
   }
 
   // ── drawing ────────────────────────────────────────────────────────────
-  draw(map, { candidates = [], highlight = null, shade = null, onPick = null, labels = null, rings = true } = {}) {
+  draw(map, { candidates = [], highlight = null, shade = null, onPick = null, labels = null, rings = true, collide = false } = {}) {
+    this.labels = labels;
+    this.collide = collide;
     this.map = map;
     this.svg.setAttribute('data-map', map.id);
     this.gCtx.replaceChildren();
@@ -171,15 +173,7 @@ export class MapView {
       }
     }
 
-    if (labels) {
-      for (const [id, text] of Object.entries(labels)) {
-        const f = map.f[id];
-        if (!f) continue;
-        const t = el('text', { x: f.cx, y: f.cy - 13, class: 'mlabel' });
-        t.textContent = text;
-        this.gPin.append(t);
-      }
-    }
+    if (labels) this.layLabels(labels, collide);
 
     if (onPick) {
       this.candidates = candidates;
@@ -188,7 +182,36 @@ export class MapView {
       // Hit radii are in SVG units, which mean nothing until the zoom has
       // settled: 22 units is over 100px zoomed into the Lesser Antilles and
       // about 7px on the unzoomed world map. Lay them again when the ease ends.
-      this.onSettle = () => this.layHits();
+      this.onSettle = () => { this.layHits(); if (this.labels) this.layLabels(this.labels, this.collide); };
+    }
+  }
+
+  // Labels are drawn in SVG user units, and a font-size in user units shrinks
+  // with the viewBox — 12 units on an 860-wide map rendered at 340px is under
+  // five pixels of type. The size is therefore computed back through the zoom
+  // so a label is always about twelve screen pixels.
+  //
+  // `collide` drops any label that would land on one already placed, biggest
+  // feature first. On a finished Caribbean sweep there are eighty-eight names
+  // and without this the Bahamas is an illegible smear.
+  layLabels(labels, collide) {
+    for (const n of this.gPin.querySelectorAll('text.mlabel')) n.remove();
+    const upp = this.unitsPerPx();
+    const size = 12 * upp;
+    const placed = [];
+    const entries = Object.entries(labels)
+      .filter(([id]) => this.map.f[id])
+      .sort((a, b) => (this.map.f[b[0]].a || 0) - (this.map.f[a[0]].a || 0));
+    for (const [id, text] of entries) {
+      const f = this.map.f[id];
+      const w = String(text).length * size * 0.55, hh = size * 1.1;
+      const x = f.cx, y = f.cy - (f.bb ? (f.bb[3] - f.bb[1]) / 2 : 0) - size * 0.5;
+      const box = [x - w / 2, y - hh, x + w / 2, y];
+      if (collide && placed.some((p) => !(box[2] < p[0] || box[0] > p[2] || box[3] < p[1] || box[1] > p[3]))) continue;
+      placed.push(box);
+      const t = el('text', { x, y, class: 'mlabel', 'font-size': size.toFixed(2), 'stroke-width': (3.5 * upp).toFixed(2) });
+      t.textContent = text;
+      this.gPin.append(t);
     }
   }
 
@@ -216,6 +239,22 @@ export class MapView {
       hit.addEventListener('click', () => this.onPick(c.id));
       this.gHit.append(hit);
     }
+  }
+
+  // "This one." A ring sized in SCREEN pixels around the feature being asked
+  // about, because Saint-Barthélemy lit up is four pixels of colour and a fill
+  // alone is not something you can find.
+  point(id) {
+    for (const n of this.gPin.querySelectorAll('circle.now')) n.remove();
+    const f = this.map?.f?.[id];
+    if (!f) return;
+    const upp = this.unitsPerPx();
+    const size = f.bb ? Math.max(f.bb[2] - f.bb[0], f.bb[3] - f.bb[1]) : 0;
+    const r = Math.max(15 * upp, size * 0.85);
+    this.gPin.append(el('circle', {
+      cx: f.cx, cy: f.cy, r, class: 'now',
+      'stroke-width': 2 * upp, 'stroke-dasharray': `${5 * upp} ${4 * upp}`,
+    }));
   }
 
   mark(id, kind) {

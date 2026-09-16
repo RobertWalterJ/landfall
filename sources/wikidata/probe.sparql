@@ -1,0 +1,6 @@
+SELECT ?item ?itemLabel ?capLabel ?flag WHERE {
+  VALUES ?item { wd:Q25528 wd:Q186190 wd:Q25279 }
+  OPTIONAL { ?item wdt:P36 ?cap. }
+  OPTIONAL { ?item wdt:P41 ?flag. }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+}

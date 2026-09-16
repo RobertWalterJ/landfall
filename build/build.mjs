@@ -31,6 +31,23 @@ const SRC = join(ROOT, 'sources');
 const OUT = join(ROOT, 'app', 'data');
 mkdirSync(join(OUT, 'maps'), { recursive: true });
 
+// Capitals, flags and alternative names for the curated islands, harvested from
+// Wikidata and Commons and geographically verified — see build/harvest-islands.mjs.
+// Absent is fine: the build simply asks fewer things about those islands.
+const islandData = (() => {
+  try { return JSON.parse(readFileSync(join(SRC, 'wikidata', 'islands.json'), 'utf8')); }
+  catch { return {}; }
+})();
+const islandFlags = (() => {
+  const out = {};
+  try {
+    for (const f of readdirSync(join(SRC, 'island-flags'))) {
+      if (f.endsWith('.svg')) out[f.replace('.svg', '')] = readFileSync(join(SRC, 'island-flags', f), 'utf8');
+    }
+  } catch { /* none harvested yet */ }
+  return out;
+})();
+
 const warn = [];
 const note = (...a) => { warn.push(a.join(' ')); };
 const load = (f) => JSON.parse(readFileSync(join(SRC, f), 'utf8'));
@@ -152,12 +169,20 @@ for (const isl of ISLANDS) {
   if (seen.has(hit)) { note('island', isl.id, 'claims a polygon already taken in', isl.parent, '- DROPPED'); continue; }
   seen.add(hit); claimed.set(pid, seen);
   const parent = items.get(pid);
+  const extra = islandData[isl.id] || {};
   const it = add({
     i: 'i:' + isl.id,
     n: isl.name,
     k: 'island',
-    alt: isl.alt || [],
+    alt: [...new Set([...(isl.alt || []), ...(extra.alt || [])])],
     pr: pid,
+    cap: extra.cap || null,
+    caps: extra.cap ? [extra.cap] : [],
+    // Nevis, Barbuda, Saba, Sint Eustatius and Bonaire fly their own flag, and
+    // those are the halves of the twin-island countries — the one place where
+    // "whose flag is this?" is a question about a real distinction inside a
+    // single country.
+    fl: islandFlags[isl.id] ? 'isl-' + isl.id : null,
     ll: [isl.lat, isl.lon],
     t: 2,
     note: isl.note || null,
@@ -528,6 +553,10 @@ const flags = {};
 const available = new Set(readdirSync(flagDir).map((f) => f.replace('.svg', '')));
 for (const it of items.values()) {
   if (!it.fl) continue;
+  if (it.fl.startsWith('isl-')) {
+    if (!flags[it.fl]) flags[it.fl] = islandFlags[it.fl.slice(4)];
+    continue;
+  }
   if (!available.has(it.fl)) { note('no flag for', it.i, it.n); it.fl = null; continue; }
   if (!flags[it.fl]) flags[it.fl] = readFileSync(join(flagDir, it.fl + '.svg'), 'utf8').replace(/\s+/g, ' ').trim();
 }

@@ -1,0 +1,362 @@
+{
+ "grand-bahama": {
+  "q": "Q866345",
+  "km": 4,
+  "cap": "Freeport"
+ },
+ "great-abaco": {
+  "q": "Q3115935",
+  "km": 13.1
+ },
+ "new-providence": {
+  "q": "Q858513",
+  "km": 0.5,
+  "cap": "Nassau"
+ },
+ "andros": {
+  "q": "Q27868234",
+  "km": 10.5
+ },
+ "eleuthera": {
+  "q": "Q1141700",
+  "km": 2.2
+ },
+ "cat-island": {
+  "q": "Q21713764",
+  "km": 14.7
+ },
+ "great-exuma": {
+  "q": "Q3115948",
+  "km": 1.5
+ },
+ "long-island-bs": {
+  "q": "Q890879",
+  "km": 3.1,
+  "cap": "Clarence Town",
+  "alt": [
+   "Long Island, Bahamas"
+  ]
+ },
+ "san-salvador": {
+  "q": "Q31508221",
+  "km": 1.6
+ },
+ "crooked-island": {
+  "q": "Q21713450",
+  "km": 1.9
+ },
+ "acklins": {
+  "q": "Q341919",
+  "km": 6.1,
+  "alt": [
+   "Acklin",
+   "Acklin Island",
+   "Aklin Island"
+  ]
+ },
+ "mayaguana": {
+  "q": "Q1540098",
+  "km": 9.4
+ },
+ "great-inagua": {
+  "q": "Q3115958",
+  "km": 2.6
+ },
+ "rum-cay": {
+  "q": "Q1859950",
+  "km": 2.3,
+  "alt": [
+   "Mamana",
+   "Santa Maria de la Concepción"
+  ]
+ },
+ "providenciales": {
+  "q": "Q1616654",
+  "km": 2.3
+ },
+ "grand-turk": {
+  "q": "Q1473924",
+  "km": 0.3,
+  "cap": "Cockburn Town"
+ },
+ "north-caicos": {
+  "q": "Q174861",
+  "km": 4.3
+ },
+ "middle-caicos": {
+  "q": "Q1475037",
+  "km": 2
+ },
+ "south-caicos": {
+  "q": "Q1814473",
+  "km": 1.6
+ },
+ "grand-cayman": {
+  "q": "Q737765",
+  "km": 1.1,
+  "cap": "George Town"
+ },
+ "cayman-brac": {
+  "q": "Q516133",
+  "km": 1.4
+ },
+ "little-cayman": {
+  "q": "Q1141722",
+  "km": 0.4
+ },
+ "isla-juventud": {
+  "q": "Q115027",
+  "km": 6.4,
+  "cap": "Nueva Gerona",
+  "alt": [
+   "Isle of Pines",
+   "The Isle of Pines",
+   "Isle of Pines, Cuba",
+   "Isle of Youth"
+  ]
+ },
+ "gonave": {
+  "q": "Q268282",
+  "km": 3.6,
+  "cap": "Anse-à-Galets",
+  "alt": [
+   "Gonave Island"
+  ]
+ },
+ "tortue": {
+  "q": "Q208345",
+  "km": 1.5,
+  "alt": [
+   "Turtle Island",
+   "Tortuga Island"
+  ]
+ },
+ "saona": {
+  "q": "Q1339113",
+  "km": 0.6
+ },
+ "vieques": {
+  "q": "Q737624",
+  "km": 0.6,
+  "cap": "Isabel II",
+  "flag": "Flag of Vieques, Puerto Rico.svg",
+  "alt": [
+   "Vieques, Puerto Rico",
+   "Vieques Municipio",
+   "Crab Island",
+   "Crab Island (Puerto Rico)"
+  ]
+ },
+ "culebra": {
+  "q": "Q775056",
+  "km": 0.7,
+  "flag": "Flag of Culebra (Puerto Rico).svg",
+  "alt": [
+   "Culebra, Puerto Rico",
+   "Culebra, PR",
+   "Culebra PR",
+   "Culebra Municipio"
+  ]
+ },
+ "mona": {
+  "q": "Q94899",
+  "km": 0.2
+ },
+ "st-thomas": {
+  "q": "Q463937",
+  "km": 1.6,
+  "cap": "Charlotte Amalie",
+  "alt": [
+   "Saint Thomas, U.S. Virgin Islands",
+   "St. Thomas, U.S. Virgin Islands",
+   "St. Thomas, US Virgin Islands",
+   "Saint Thomas, United States Virgin Islands"
+  ]
+ },
+ "st-john": {
+  "q": "Q849441",
+  "km": 2.3,
+  "cap": "Cruz Bay",
+  "alt": [
+   "Saint John, United States Virgin Islands",
+   "Saint John, U.S. Virgin Islands",
+   "Saint John, US Virgin Islands",
+   "St John, U.S. Virgin Islands"
+  ]
+ },
+ "st-croix": {
+  "q": "Q642481",
+  "km": 3.4,
+  "cap": "Christiansted",
+  "alt": [
+   "Saint Croix, U.S. Virgin Islands",
+   "Saint Croix, US Virgin Islands",
+   "St Croix, U.S. Virgin Islands",
+   "St Croix, United States Virgin Islands"
+  ]
+ },
+ "tortola": {
+  "q": "Q827604",
+  "km": 4.1,
+  "cap": "Road Town",
+  "alt": [
+   "Tortola BVI",
+   "Tortola, British Virgin Islands"
+  ]
+ },
+ "virgin-gorda": {
+  "q": "Q1139293",
+  "km": 3.4
+ },
+ "anegada": {
+  "q": "Q519873",
+  "km": 0.2,
+  "alt": [
+   "Drowned Island"
+  ]
+ },
+ "jost-van-dyke": {
+  "q": "Q1330151",
+  "km": 1.8
+ },
+ "st-kitts": {
+  "q": "Q204989",
+  "km": 1.2,
+  "cap": "Basseterre",
+  "alt": [
+   "Saint Christopher Island",
+   "Saint Christopher",
+   "St. Christopher",
+   "St. Christopher's"
+  ]
+ },
+ "nevis": {
+  "q": "Q207794",
+  "km": 0.4,
+  "cap": "Charlestown",
+  "flag": "Flag of Nevis.svg",
+  "alt": [
+   "Dulcina",
+   "Meavis",
+   "Meves",
+   "Mevis"
+  ]
+ },
+ "saba": {
+  "q": "Q25528",
+  "km": 0.4,
+  "cap": "The Bottom",
+  "flag": "Flag of Saba.svg"
+ },
+ "sint-eustatius": {
+  "q": "Q26180",
+  "km": 1.6,
+  "cap": "Oranjestad",
+  "flag": "Flag of Sint Eustatius.svg",
+  "alt": [
+   "Statia",
+   "Statius"
+  ]
+ },
+ "antigua": {
+  "q": "Q316390",
+  "km": 1.7,
+  "alt": [
+   "Wadadli"
+  ]
+ },
+ "barbuda": {
+  "q": "Q238752",
+  "km": 2.4,
+  "cap": "Codrington"
+ },
+ "basse-terre-island": {
+  "q": "Q153822",
+  "km": 5.7,
+  "cap": "Basse-Terre"
+ },
+ "grande-terre": {
+  "q": "Q527799",
+  "km": 2.2,
+  "cap": "Pointe-à-Pitre"
+ },
+ "marie-galante": {
+  "q": "Q1334492",
+  "km": 0.5,
+  "cap": "Grand-Bourg",
+  "alt": [
+   "Mawigalant",
+   "Marigalant"
+  ]
+ },
+ "la-desirade": {
+  "q": "Q1024682",
+  "km": 0.3
+ },
+ "st-vincent-island": {
+  "q": "Q379656",
+  "km": 0,
+  "cap": "Kingstown",
+  "alt": [
+   "Youloumain",
+   "Hairouna"
+  ]
+ },
+ "bequia": {
+  "q": "Q257857",
+  "km": 1.2,
+  "flag": "Bequia flag.svg"
+ },
+ "mustique": {
+  "q": "Q607357",
+  "km": 1.6,
+  "cap": "Lovell Village"
+ },
+ "canouan": {
+  "q": "Q647143",
+  "km": 1.9,
+  "cap": "Charlestown"
+ },
+ "union-island": {
+  "q": "Q536311",
+  "km": 0.4
+ },
+ "carriacou": {
+  "q": "Q795647",
+  "km": 1.5
+ },
+ "trinidad": {
+  "q": "Q128323",
+  "km": 5.7
+ },
+ "tobago": {
+  "q": "Q185111",
+  "km": 1.4
+ },
+ "bonaire": {
+  "q": "Q65433949",
+  "km": 3.9
+ },
+ "margarita": {
+  "q": "Q334738",
+  "km": 7.2,
+  "alt": [
+   "Margarita Island (Venezuela)",
+   "Margarita Island, Venezuela",
+   "Isla de Margarita, Venezuela",
+   "Margarita, Nueva Esparta"
+  ]
+ },
+ "cozumel": {
+  "q": "Q20119933",
+  "km": 3.7
+ },
+ "roatan": {
+  "q": "Q1419813",
+  "km": 5.1,
+  "alt": [
+   "Ruatan",
+   "Rattan"
+  ]
+ }
+}

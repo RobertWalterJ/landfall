@@ -23,6 +23,7 @@ import { facetsFor } from './engine.js';
 import { Round } from './session.js';
 import { MapView } from './map.js';
 import { renderHero } from './hero.js';
+import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable } from './sweep.js';
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable } from './speech.js';
 import * as sound from './sound.js';
 
@@ -183,7 +184,9 @@ screens.home = () => {
     h('i', { class: 'dot', style: `width:8px;height:8px;border-radius:50%;background:${colour}` }),
     h('span', { class: 'n' }, n)) : null;
 
-  const sweep = State.data.sweeps[packIds[0]] || {};
+  // Regions held: three clean sweeps at expanding gaps. The only count on this
+  // screen that takes five weeks to earn.
+  const held = Object.keys(State.data.sweeps).filter((k) => sweepStatus(k).held);
 
   return h('div', { class: 'screen' },
     h('div', { class: 'home-top' },
@@ -198,9 +201,13 @@ screens.home = () => {
         statusDot(due, 'var(--brass-mark)'), () => startRound({ mode: 'quick' }), true),
       mode(ICON.training, 'Training', 'spaced, untimed, until you are up to date',
         null, () => startRound({ mode: 'training' })),
-      mode(ICON.label, 'Label the Map', 'fill in a whole region',
-        sweep.best ? h('span', { class: 'mode-status' }, h('span', { class: 'n' }, sweep.best), 'best') : null,
-        () => go('label', { packId: packIds[0] })),
+      mode(ICON.label, 'Label the Map', 'name a whole region, no options',
+        held.length
+          ? h('span', { class: 'mode-status' },
+            h('i', { class: 'dot', style: 'width:8px;height:8px;border-radius:50%;background:var(--verdigris)' }),
+            h('span', { class: 'n' }, held.length), 'held')
+          : null,
+        () => go('label')),
       mode(ICON.atlas, 'Atlas', `${DB.items.size.toLocaleString()} places · read or listen`,
         null, () => go('atlas')),
       mode(ICON.progress, 'Progress', 'mastery, record, drills',
@@ -638,154 +645,411 @@ screens.summary = () => {
     seen.size ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'What slipped'), missed) : null,
     h('button', { class: 'btn tap', style: 'margin-top:var(--section)', onclick: () => startRound({ mode: 'quick' }) }, 'Another round'),
+    // Nothing due is not a dead end. A sweep is a better use of the same
+    // minutes than churning cards ahead of schedule, and it is the mode he
+    // actually wants.
+    h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('label') }, 'Label the map instead'),
     h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('home') }, 'Home'));
 };
 
 // ── Label the Map ────────────────────────────────────────────────────────
 //
 // The mode he is here for: work through a region naming every feature until the
-// map is filled in. No options — the four-option form is recognition, and this
-// is production, which is the thing he could actually do as a child.
+// map is filled in. Removing the four options converts the whole engine from
+// recognition to production, which is the thing he could actually do as a child.
+//
+// Three rules from the design that are easy to lose and worth stating:
+//   The map does NOT zoom to the answer. Seeing the archipelago whole is the
+//   entire point, so the region stays framed for the length of the sweep.
+//   There is no progress bar, because the map IS the progress bar.
+//   A missed feature inks in ANYWAY and goes to the back of the queue. The goal
+//   state is a completed chart; leaving a hole as punishment is not the game.
+
 let sweep = null;
 
-screens.label = ({ packId }) => {
-  const p = DB.packs.get(packId) || DB.packs.get(activePacks()[0]);
-  const wrap = h('div', { class: 'screen round' });
-  const map = DB.maps.get(p.map);
-  if (!map) { loadMap(p.map).then(() => go('label', { packId })); return h('div', { class: 'screen' }, h('p', { class: 'lede' }, 'Unfolding the map…')); }
+// The entry screen: which set, and which direction.
+screens.label = () => {
+  const packIds = activePacks();
+  const facets = facetsOf(packIds);
+  const sets = sweepSets(packIds, facets);
+  const ready = sets.filter((s) => s.ready);
+  const notYet = sets.filter((s) => !s.ready);
 
-  // Only the most specific feature is asked for. The Bahamas and its fourteen
-  // named islands are all in this pack and all on this map, so asking you to
-  // tap "the Bahamas" when Andros is a separate target is an ambiguous
-  // question with two defensible answers.
-  const all = inPack(p.id).filter((it) => map.f[it.i]);
-  const hasChildren = new Set(all.map((it) => it.pr).filter(Boolean));
-  const members = all.filter((it) => !hasChildren.has(it.i));
-  // Geographic order on the first sweep — north to south is how the chain is
-  // actually learned. Once the region is known the order randomises, so the
-  // list stops being the cue.
-  const done = State.data.sweeps[p.id]?.clean || 0;
-  const order = done > 0
-    ? members.slice().sort(() => Math.random() - 0.5)
-    : members.slice().sort((a, b) => (b.ll?.[0] ?? 0) - (a.ll?.[0] ?? 0));
+  const dir = State.settings().sweepDir || 'fill';
+  const dirRow = h('div', { class: 'toggle', style: 'margin-top:var(--s2)' },
+    h('button', {
+      class: 'opt tap small', 'aria-pressed': String(dir === 'fill'),
+      onclick: () => { State.set({ sweepDir: 'fill' }); go('label'); },
+    }, 'Place it on the map'),
+    h('button', {
+      class: 'opt tap small', 'aria-pressed': String(dir === 'name'),
+      onclick: () => { State.set({ sweepDir: 'name' }); go('label'); },
+    }, 'Name it'));
 
-  sweep = { p, order, i: 0, right: 0, given: [], missedOnce: new Set(), clean: true, named: new Set() };
+  const setRow = (s) => {
+    const st = s.status;
+    const badge = st.held
+      ? h('span', { class: 'chip' }, h('i', { class: 'dot', style: 'background:var(--verdigris)' }), 'held')
+      : st.clean
+        ? h('span', { class: 'mode-status' }, h('span', { class: 'n' }, st.clean),
+          st.clean === 1 ? 'clean sweep' : 'clean')
+        : null;
+    return h('button', {
+      class: 'row tap', onclick: () => go('sweep', { key: s.key, dir }),
+    },
+      ring(s.met / s.members.length, 'small'),
+      h('span', { class: 'row-text' },
+        h('span', { class: 'row-title' }, s.name),
+        h('span', { class: 'row-sub' },
+          `${s.members.length} features · you have met ${s.met}`)),
+      badge, chev());
+  };
 
+  const blocked = (s) => h('div', { class: 'row', style: 'opacity:.55' },
+    ring(s.met / s.members.length, 'small'),
+    h('span', { class: 'row-text' },
+      h('span', { class: 'row-title' }, s.name),
+      h('span', { class: 'row-sub' }, `${s.met} of ${s.members.length} met. Not yet.`)));
+
+  return h('div', { class: 'screen' },
+    backBar('Label the Map', () => go('home')),
+    h('p', { class: 'lede' },
+      'No options and no clock. Work through a region until the chart is finished.'),
+    h('div', { style: 'margin-top:var(--s5)' },
+      h('div', { class: 'label' }, 'Which way round'),
+      dirRow,
+      h('p', { class: 'lede muted', style: 'font-size:.9rem;margin-top:var(--s2)' },
+        dir === 'fill'
+          ? 'It names a place, you find it. The whole map is live.'
+          : 'It lights up a place, you name it. Typed or spoken, and spelling is never marked.')),
+    ready.length
+      ? h('div', { style: 'margin-top:var(--s6)' },
+        h('div', { class: 'label' }, 'Ready to sweep'),
+        h('div', { class: 'stack' }, ready.map(setRow)))
+      : h('p', { class: 'lede', style: 'margin-top:var(--s6)' },
+        'Nothing is ready yet. A set opens here once you have met most of it — play a round or two first, because a sweep of places you have never seen is not practice.'),
+    notYet.length
+      ? h('div', { style: 'margin-top:var(--s6)' },
+        h('div', { class: 'label' }, 'Not yet'),
+        h('div', { class: 'stack' }, notYet.slice(0, 8).map(blocked)))
+      : null);
+};
+
+// The sweep itself.
+screens.sweep = ({ key, dir }) => {
+  const packIds = activePacks();
+  const set = sweepSets(packIds, facetsOf(packIds)).find((s) => s.key === key);
+  if (!set) return screens.label();
+  const map = DB.maps.get(set.mapId);
+  if (!map) {
+    loadMap(set.mapId).then(() => go('sweep', { key, dir }));
+    return h('div', { class: 'screen' }, h('p', { class: 'lede' }, 'Unfolding the map…'));
+  }
+
+  // The first sweep of a set runs in geographic order — north to south along
+  // the arc — because that is the structure of the place and it gives him a
+  // route to walk. Every sweep after that is shuffled: if a set is only ever
+  // learned in order, the list becomes the retrieval cue and "where is Nevis"
+  // fails on its own.
+  const first = set.status.last === 0;
+  const order = first
+    ? set.members.slice().sort((a, b) => (b.ll?.[0] ?? 0) - (a.ll?.[0] ?? 0))
+    : set.members.map((v) => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+
+  sweep = {
+    set, dir, map, order, i: 0,
+    firstTime: 0, afterMiss: 0, given: [], missed: new Set(), failed: [],
+    named: new Map(),            // id -> 'clean' | 'miss' | 'given'
+  };
+
+  const head = h('div', { class: 'head', style: 'gap:var(--s3)' },
+    h('button', { class: 'icon-btn tap small', 'aria-label': 'Leave the sweep', onclick: () => go('label'), html: ICON.back }),
+    h('span', { class: 'row-text' },
+      h('span', { class: 'row-title', style: 'font-family:var(--font-read);font-weight:600' }, set.name),
+      h('span', { class: 'row-sub', id: 'sweep-tally' }, `0 of ${order.length}`)),
+    ring(0, 'small'));
   // Fixed height, not flex:1 — in a min-height:100dvh column a growing well
-  // pushes "Show me" below the fold.
-  const well = h('div', { class: 'mapwell', style: 'flex:none;height:52dvh' });
-  const prompt = h('div', { class: 'prompt' });
-  const foot = h('div', { style: 'margin-top:var(--s4)' });
-  wrap.append(
-    h('div', { class: 'round-top' },
-      h('button', { class: 'icon-btn tap small', 'aria-label': 'Back', onclick: () => go('home'), html: ICON.back }),
-      h('div', { class: 'dots' }),
-      h('span', { style: 'width:44px' })),
-    prompt, well, foot);
+  // pushes the prompt and the input below the fold.
+  const well = h('div', { class: 'mapwell', style: 'flex:none;height:46dvh;margin-top:var(--s3)' });
+  const bar = h('div', { class: 'bubble', style: 'margin-top:var(--s3)' });
+  const wrap = h('div', { class: 'screen round' }, head, well, bar);
 
   mount(() => {
     const mv = new MapView(well);
     sweep.mv = mv;
-    const paint = () => {
-      const labels = {};
-      for (const id of [...sweep.named].slice(-4)) labels[id] = item(id)?.n || '';
-      mv.draw(map, {
-        candidates: [], rings: false, labels,
-        shade: (id) => (sweep.named.has(id) ? 'var(--land-known)' : null),
-        onPick: null,
-      });
-      // Everything already named is inked; the rest is blank coast.
-      for (const el of mv.svg.querySelectorAll('.feat')) {
-        if (!sweep.named.has(el.dataset.id)) el.style.fill = 'var(--land-unseen)';
-      }
-    };
-    sweep.paint = paint;
     paint();
-    mv.setView([0, 0, map.w, map.h], { animate: false });
+    // THE SET's region, held, for the length of the sweep. Not the whole map:
+    // sweeping the Leewards while framed on the entire Caribbean puts every
+    // target inside about eight pixels. The view never moves again after this,
+    // because seeing the chain whole is the point of the mode.
+    mv.setView(mv.boxOf(set.members.map((m) => m.i), 0.28), { animate: false });
     ask();
   });
+
+  function paint(pulse) {
+    const labels = {};
+    for (const id of sweep.named.keys()) labels[id] = item(id)?.n || '';
+    sweep.mv.draw(map, {
+      candidates: sweep.order.slice(sweep.i).map((x) => ({ id: x.i })),
+      rings: false,
+      labels,
+      collide: true,
+      onPick: dir === 'fill' ? (id) => tapped(id) : null,
+    });
+    for (const el of sweep.mv.svg.querySelectorAll('.feat')) {
+      const how = sweep.named.get(el.dataset.id);
+      el.classList.toggle('named', how === 'clean' || how === 'miss');
+      el.classList.toggle('given', how === 'given');
+    }
+    if (dir === 'name' && sweep.i < sweep.order.length) {
+      const id = sweep.order[sweep.i].i;
+      sweep.mv.svg.querySelector(`.feat[data-id="${CSS.escape(id)}"]`)?.classList.add('hi');
+      sweep.mv.point(id);
+    }
+    if (pulse) {
+      const el = sweep.mv.svg.querySelector(`.feat[data-id="${CSS.escape(pulse)}"]`);
+      el?.classList.add('just');
+      setTimeout(() => el?.classList.remove('just'), 700);
+    }
+    const done = sweep.named.size;
+    head.querySelector('#sweep-tally').textContent = `${done} of ${sweep.order.length}`;
+    const r = head.querySelector('.ring');
+    r.style.setProperty('--pct', done / sweep.order.length);
+    r.className = 'ring small' + (done / sweep.order.length >= 0.75 ? ' high' : done / sweep.order.length >= 0.35 ? ' mid' : '');
+  }
 
   function ask() {
     if (sweep.i >= sweep.order.length) return finish();
     const it = sweep.order[sweep.i];
-    const f = map.f[it.i];
-    prompt.replaceChildren(
-      h('div', { class: 'prompt-text' },
-        h('div', { class: 'frame' }, `${sweep.i + 1} of ${sweep.order.length} · tap it on the map`),
-        h('div', { class: 'subject' }, it.n)),
+    paint();
+    bar.replaceChildren(
+      dir === 'fill' ? fillPrompt(it) : namePrompt(it),
+      h('button', {
+        class: 'btn quiet tap', style: 'margin-top:var(--s3)',
+        onclick: () => give(it),
+      }, 'Show me'));
+    if (dir === 'name') setTimeout(() => bar.querySelector('input')?.focus({ preventScroll: true }), 60);
+  }
+
+  function fillPrompt(it) {
+    return h('div', { style: 'display:flex;align-items:flex-start;gap:var(--s3)' },
+      h('div', { style: 'flex:1;min-width:0' },
+        h('div', { class: 'frame' }, 'Place this'),
+        h('div', { class: 'subject', style: 'font-size:clamp(1.7rem,7.5vw,2.2rem)' }, it.n)),
       speakBtn(it.n));
-    // Every unnamed feature is tappable: this is production, not a choice of
-    // four, so the whole map is the answer space.
-    const candidates = sweep.order.slice(sweep.i).map((x) => ({ id: x.i }));
-    // Only the last few names stay on the chart: at eighty-eight labels the
-    // Bahamas is an illegible smear. The ink is the record; the labels are a
-    // short-term "you just did that".
-    const recent = [...sweep.named].slice(-4);
-    sweep.mv.draw(map, {
-      candidates,
-      rings: false,
-      labels: Object.fromEntries(recent.map((id) => [id, item(id)?.n || ''])),
-      onPick: (id) => hit(id, it),
+  }
+
+  function namePrompt(it) {
+    const input = h('input', {
+      class: 'search', type: 'text', autocomplete: 'off', autocapitalize: 'words',
+      spellcheck: 'false', placeholder: 'What is it called?',
+      onkeydown: (e) => { if (e.key === 'Enter') submit(); },
     });
-    for (const el of sweep.mv.svg.querySelectorAll('.feat')) {
-      if (sweep.named.has(el.dataset.id)) el.style.fill = 'var(--land-known)';
-      else el.style.fill = '';
+    const submit = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      named(it, v);
+    };
+    const row = h('div', { style: 'display:flex;gap:var(--s2);margin-top:var(--s3)' }, input);
+    if (listenAvailable()) {
+      const mic = h('button', {
+        class: 'say tap small', 'aria-label': 'Say the name',
+        onclick: (e) => {
+          const btn = e.currentTarget;
+          btn.classList.add('on');
+          listen((alts) => {
+            for (const a of alts) {
+              if (matchName(a, it, sweep.order)) { named(it, a); return; }
+            }
+            input.value = alts[0] || '';
+          }, () => btn.classList.remove('on'));
+        },
+        html: svg('<path d="M12 4.5a2.6 2.6 0 0 1 2.6 2.6v4.4a2.6 2.6 0 0 1-5.2 0V7.1A2.6 2.6 0 0 1 12 4.5z"/><path d="M6.5 11.3a5.5 5.5 0 0 0 11 0M12 16.8V20"/>'),
+      });
+      row.append(mic);
     }
-    foot.replaceChildren(h('button', { class: 'btn quiet tap', onclick: () => giveUp(it) }, 'Show me'));
+    row.append(h('button', { class: 'btn tap', style: 'width:auto;padding:0 var(--s5);min-height:48px', onclick: submit }, 'Say'));
+    return h('div', {},
+      h('div', { class: 'frame' }, 'Name this'),
+      h('div', { class: 'prompt-sub', style: 'margin-top:4px' }, 'Spelling is never marked.'),
+      row);
   }
 
-  function hit(id, want) {
-    if (id === want.i) {
-      sound.right();
-      sweep.named.add(id);
-      if (!sweep.missedOnce.has(want.i)) sweep.right++;
-      // Fill mode is free of options, so a correct answer here is worth more
-      // than a four-option one — it earns ease.
-      State.answer(want.i, 'place', !sweep.missedOnce.has(want.i), null, { bonus: 0.15 });
-      sweep.i++;
-      ask();
-    } else {
-      sound.wrong();
-      sweep.clean = false;
-      if (sweep.missedOnce.has(want.i)) { giveUp(want); return; }
-      sweep.missedOnce.add(want.i);
-      State.answer(want.i, 'place', false, id);
-      // Back of the queue rather than straight away.
-      const it = sweep.order.splice(sweep.i, 1)[0];
-      sweep.order.push(it);
-      ask();
-    }
+  // ── answering ───────────────────────────────────────────────────────
+  function tapped(id) {
+    const want = sweep.order[sweep.i];
+    if (id === want.i) return right(want);
+    // A wrong TAP is the richest confusion signal in the app: an unprompted
+    // error with no distractor set shaping it.
+    State.answer(want.i, 'place', false, id);
+    wrong(want, id);
   }
 
-  function giveUp(want) {
-    sweep.clean = false;
-    sweep.given.push(want.i);
-    sweep.named.add(want.i);
-    State.answer(want.i, 'place', false, null);
+  function named(it, text) {
+    const m = matchName(text, it, sweep.order);
+    if (m) return right(it, m.exact ? null : m.spelling);
+    State.answer(it.i, 'place', false, null);
+    wrong(it, null);
+  }
+
+  function right(it, spelling) {
+    sound.right();
+    const missedBefore = sweep.missed.has(it.i);
+    if (!missedBefore) { sweep.firstTime++; State.answer(it.i, 'place', true, null, { bonus: dir === 'name' ? 0.25 : 0.15 }); }
+    else { sweep.afterMiss++; State.answer(it.i, 'place', true, null, { bonus: dir === 'name' ? 0.25 : 0.15 }); }
+    sweep.named.set(it.i, missedBefore ? 'miss' : 'clean');
     sweep.i++;
+    if (spelling) return showSpelling(it, spelling);
     ask();
+    paint(it.i);
   }
 
+  function wrong(want, tappedId) {
+    sound.wrong();
+    sweep.failed.push(want.n);
+    if (sweep.missed.has(want.i)) return give(want, true);   // twice is enough
+    sweep.missed.add(want.i);
+    // It inks in anyway — you get told — and goes to the back of the queue.
+    sweep.named.set(want.i, 'miss');
+    const it = sweep.order.splice(sweep.i, 1)[0];
+    sweep.order.push(it);
+    sweep.named.delete(want.i);
+    paint(want.i);
+    tell(want, tappedId ? item(tappedId) : null, 'miss');
+  }
+
+  function give(want, afterTwo = false) {
+    if (!afterTwo) {
+      // No confusion pair: there was no wrong answer, only a blank.
+      State.answer(want.i, 'place', false, null);
+      sweep.failed.push(want.n);
+    }
+    sweep.given.push(want.i);
+    sweep.named.set(want.i, 'given');
+    sweep.i++;
+    paint(want.i);
+    tell(want, null, 'given');
+  }
+
+  // A short, dismissible line rather than the round's verdict sheet: this mode
+  // is the contemplative one and the chart should stay in view.
+  function tell(want, wrongItem, how) {
+    bar.replaceChildren(
+      h('div', { style: 'display:flex;align-items:flex-start;gap:var(--s3)' },
+        h('span', {
+          class: 'sheet-glyph', style: `stroke:var(--${how === 'given' ? 'brass' : 'vermilion'})`,
+          html: ICON.cross,
+        }),
+        h('div', { style: 'flex:1;min-width:0' },
+          h('div', { class: 'sheet-answer', style: 'font-size:1.5rem' }, want.n),
+          wrongItem
+            ? h('div', { class: 'sheet-context' }, 'You tapped ' + wrongItem.n + '.')
+            : h('div', { class: 'sheet-context' }, how === 'given' ? 'Given.' : 'It comes back before the end.')),
+        speakBtn(want.n)),
+      h('button', { class: 'btn tap', style: 'margin-top:var(--s3)', onclick: ask }, 'Carry on'));
+  }
+
+  function showSpelling(it, spelling) {
+    bar.replaceChildren(
+      h('div', { style: 'display:flex;align-items:flex-start;gap:var(--s3)' },
+        h('span', { class: 'sheet-glyph', style: 'stroke:var(--verdigris)', html: ICON.tick }),
+        h('div', { style: 'flex:1;min-width:0' },
+          h('div', { class: 'sheet-answer', style: 'font-size:1.5rem' }, spelling),
+          h('div', { class: 'sheet-context' }, 'Counted. That is how it is spelled.')),
+        speakBtn(spelling)),
+      h('button', { class: 'btn tap', style: 'margin-top:var(--s3)', onclick: ask }, 'Carry on'));
+    paint(it.i);
+  }
+
+  // ── the end ─────────────────────────────────────────────────────────
   function finish() {
-    const rec = State.data.sweeps[p.id] || { clean: 0, best: 0 };
-    rec.best = Math.max(rec.best || 0, sweep.right);
-    if (sweep.clean) rec.clean = (rec.clean || 0) + 1;
-    State.data.sweeps[p.id] = rec;
-    State.save();
-    if (sweep.clean) sound.fanfare();
-    app.replaceChildren(h('div', { class: 'screen' },
-      h('h1', { class: 'title', style: 'margin-top:var(--s6)' }, sweep.clean ? 'Clean sweep' : 'Sweep done'),
-      h('p', { class: 'sentence' }, `${sweep.right} of ${sweep.order.length} first time.`),
-      sweep.given.length
-        ? h('p', { class: 'lede' }, 'Given: ' + sweep.given.map((id) => item(id)?.n).filter(Boolean).join(', ') + '.')
-        : h('p', { class: 'lede' }, 'Nothing had to be given away.'),
-      rec.clean ? h('p', { class: 'lede muted' }, `${rec.clean} clean sweep${rec.clean === 1 ? '' : 's'} of ${p.short}.`) : null,
-      h('button', { class: 'btn tap', style: 'margin-top:var(--section)', onclick: () => go('label', { packId: p.id }) }, 'Sweep again'),
-      h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('home') }, 'Home')));
+    const clean = sweep.firstTime === sweep.order.length;
+    const res = recordSweep(set.key, {
+      cleanSweep: clean, named: sweep.firstTime, total: sweep.order.length,
+      failed: [...new Set(sweep.failed)],
+    });
+    if (clean) sound.fanfare();
+    paint();
+    bar.replaceChildren();
+
+    const lines = [];
+    if (res.now.held && !res.was.held) {
+      lines.push(h('p', { class: 'sentence' },
+        `${set.name} is held — three clean sweeps, five weeks apart.`));
+    } else if (res.was.held && !res.now.held) {
+      lines.push(h('p', { class: 'sentence' },
+        `Dropped. ${set.name} was held since ${new Date(res.was.heldSince).toLocaleDateString('en-CA', { day: 'numeric', month: 'long' })}.`));
+      if (res.now.droppedNames.length) {
+        lines.push(h('p', { class: 'lede' }, res.now.droppedNames.join(', ') + '.'));
+      }
+    } else if (clean && res.now.waitFor) {
+      lines.push(h('p', { class: 'lede' },
+        `Clean sweep ${res.now.clean}. The next one counts towards holding this region in ${res.now.waitFor} day${res.now.waitFor === 1 ? '' : 's'}.`));
+    } else if (clean) {
+      lines.push(h('p', { class: 'lede' }, `Clean sweep ${res.now.clean}.`));
+    }
+
+    const panel = h('div', { class: 'bubble', style: 'margin-top:var(--s3)' },
+      h('p', { class: 'sentence' }, `${set.name} — ${sweep.order.length} of ${sweep.order.length}.`),
+      h('p', { class: 'lede', style: 'font-size:.95rem' },
+        [`${sweep.firstTime} named first time`,
+          sweep.afterMiss ? `${sweep.afterMiss} after a miss` : null,
+          sweep.given.length ? `${sweep.given.length} given` : null]
+          .filter(Boolean).join(' · ')),
+      lines,
+      h('div', { style: 'display:flex;gap:var(--s2);margin-top:var(--s4)' },
+        h('button', { class: 'btn tap', onclick: () => go('sweep', { key, dir }) }, 'Again'),
+        h('button', { class: 'btn quiet tap', onclick: () => saveChart(set) }, 'Save the chart')),
+      h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('home') }, 'Home'));
+    wrap.replaceChildren(head, well, panel);
   }
 
   return wrap;
 };
+
+// The finished chart is the reward, so it is worth being able to keep one.
+function saveChart(set) {
+  try {
+    const src = sweep.mv.svg.cloneNode(true);
+    src.setAttribute('viewBox', `0 0 ${sweep.map.w} ${sweep.map.h}`);
+    src.setAttribute('width', sweep.map.w);
+    src.setAttribute('height', sweep.map.h);
+    const cs = getComputedStyle(document.documentElement);
+    const vars = ['--land-context', '--land-unseen', '--land-known', '--land-shaky',
+      '--surface', '--surface-sunk', '--ink', '--sea', '--vermilion', '--verdigris', '--brass-mark'];
+    // An SVG rasterised through an <img> has no access to the document's CSS,
+    // so the custom properties have to be baked in.
+    const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    style.textContent = `svg{background:${cs.getPropertyValue('--surface-sunk')}}`
+      + vars.map((v) => `${v}:${cs.getPropertyValue(v)};`).join('')
+      + `.ctx{fill:${cs.getPropertyValue('--land-context')};opacity:.55}`
+      + `.feat{fill:${cs.getPropertyValue('--land-unseen')}}`
+      + `.feat.named{fill:${cs.getPropertyValue('--land-known')}}`
+      + `.feat.given{fill:${cs.getPropertyValue('--brass-mark')}}`
+      + `text.mlabel{font:600 12px sans-serif;fill:${cs.getPropertyValue('--ink')};text-anchor:middle;`
+      + `paint-order:stroke;stroke:${cs.getPropertyValue('--surface-sunk')};stroke-width:3.5px;stroke-linejoin:round}`;
+    src.prepend(style);
+    const svgText = new XMLSerializer().serializeToString(src);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = sweep.map.w * 1.5;
+      c.height = sweep.map.h * 1.5;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = cs.getPropertyValue('--surface-sunk');
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob((blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = set.name.replace(/[^\w]+/g, '-').toLowerCase() + '-' + new Date().toISOString().slice(0, 10) + '.png';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      });
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+  } catch { /* a chart that will not save is not worth an error message */ }
+}
 
 // ── Atlas ────────────────────────────────────────────────────────────────
 screens.atlas = () => {

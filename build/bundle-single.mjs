@@ -30,7 +30,7 @@ fontCss = fontCss.replace(/url\((([\w-]+)\.woff2)\)/g, (_, file) => {
 
 // ── modules, in dependency order, with imports removed ───────────────────
 const MODULES = ['data.js', 'schedule.js', 'engine.js', 'map.js', 'speech.js', 'sound.js',
-  'hero.js', 'session.js', 'app.js'];
+  'hero.js', 'sweep.js', 'session.js', 'app.js'];
 let js = '';
 // `import * as sound from './sound.js'` cannot survive flattening: the import
 // line goes and every `sound.right()` then references nothing, which is a

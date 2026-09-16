@@ -435,6 +435,74 @@ export const KINDS = {
     },
   },
 
+  // The twin-island question. Nevis and Saint Kitts, Antigua and Barbuda,
+  // Trinidad and Tobago, Basse-Terre and Grande-Terre, Saba and Sint Eustatius,
+  // Tortola and Virgin Gorda — the Caribbean is full of countries that are two
+  // or three islands wearing one flag, and knowing which halves go together is
+  // most of knowing the region.
+  sibling: {
+    facet: 'parent', form: 'options', label: 'Shares a country',
+    can: (it) => it.k === 'island' && siblingsOf(it).length > 0,
+    build(it, ctx) {
+      const kin = siblingsOf(it);
+      if (!kin.length) return null;
+      const answer = pick(kin);
+      const kinSet = new Set([it.i, ...kin.map((k) => k.i)]);
+      // Wrong answers are islands from OTHER countries — ideally other halves
+      // of other twins, which is what makes it a question about which pairs go
+      // together rather than about which islands exist.
+      const pool = ctx.pool.filter((o) => o.k === 'island' && !kinSet.has(o.i));
+      const wrong = nearMisses(answer, pool, 3, { cruel: ctx.cruel });
+      if (wrong.length < 3) return null;
+      const parent = parentOf(it);
+      return {
+        form: 'options',
+        prompt: withArticle(it) + ' shares a country with…',
+        frame: 'Shares a country with', subject: it.n,
+        speak: 'Which island shares a country with ' + it.n,
+        options: shuffle([answer, ...wrong]).map((o) => opt(o.i, o.n, { correct: o.i === answer.i })),
+        answerLabel: answer.n,
+        explain: parent
+          ? (kin.length === 1
+            ? parent.n + ' is two islands: ' + it.n + ' and ' + answer.n + '.'
+            : parent.n + ' is ' + (kin.length + 1) + ' islands: ' + [it.n, ...kin.map((k) => k.n)].join(', ') + '.')
+          : null,
+        correctId: answer.i,
+      };
+    },
+  },
+
+  // Where something sits in the chain. The Lesser Antilles run almost exactly
+  // north to south, so this is the question that turns a set of names into an
+  // ordered arc — which is what "naming every island in the Leewards" actually
+  // means.
+  northernmost: {
+    facet: 'place', form: 'options', label: 'Furthest north',
+    can: (it) => Array.isArray(it.ll) && Number.isFinite(it.ll[0]),
+    build(it, ctx) {
+      const near = nearMisses(it, ctx.pool.filter((o) => Number.isFinite(o.ll?.[0])), 3, { cruel: ctx.cruel });
+      if (near.length < 3) return null;
+      const all = [it, ...near];
+      const ranked = all.slice().sort((a, b) => b.ll[0] - a.ll[0]);
+      // Separated enough that the answer is a fact rather than a guess about
+      // two islands ten kilometres apart.
+      for (let i = 1; i < ranked.length; i++) {
+        if (ranked[i - 1].ll[0] - ranked[i].ll[0] < 0.35) return null;
+      }
+      const answer = ranked[0];
+      return {
+        form: 'options',
+        prompt: 'Which of these is furthest north?',
+        frame: 'Which of these is furthest north', subject: null,
+        speak: 'Which of these is furthest north',
+        options: shuffle(all).map((o) => opt(o.i, o.n, { correct: o.i === answer.i })),
+        answerLabel: answer.n,
+        explain: 'North to south: ' + ranked.map((o) => o.n).join(', ') + '.',
+        correctId: answer.i,
+      };
+    },
+  },
+
   largest: {
     facet: 'facts', form: 'options', label: 'Largest',
     can: (it) => (it.x?.pop || 0) > 0,
@@ -494,6 +562,18 @@ function derivable(name, dem) {
   const b = dem.toLowerCase().replace(/[^a-z]/g, '');
   const n = Math.min(5, a.length, b.length);
   return a.slice(0, n) === b.slice(0, n);
+}
+
+// The other islands of the same country, as the corpus actually holds them.
+// Two or three is a twin-island country; more than four is an archipelago and
+// the question stops being about pairs.
+function siblingsOf(it) {
+  if (!it.pr) return [];
+  const kin = [];
+  for (const o of DB.items.values()) {
+    if (o.i !== it.i && o.k === 'island' && o.pr === it.pr) kin.push(o);
+  }
+  return kin.length <= 3 ? kin : [];
 }
 
 // What a place belongs TO: a city to its province (or country if it has none),

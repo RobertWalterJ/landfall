@@ -29,6 +29,7 @@ const PRECACHE = [
   'js/speech.js',
   'js/sound.js',
   'js/hero.js',
+  'js/sweep.js',
   'fonts/fonts.css',
   'fonts/literata-latin-400.woff2',
   'fonts/literata-latin-ext-400.woff2',
