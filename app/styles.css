@@ -1,0 +1,512 @@
+/* Landfall.
+ *
+ * THE IDEA: a chart being surveyed. The ground is shallow water, surfaces are
+ * paper, and what you have learned gets inked in. That one metaphor is why the
+ * home screen's progress display is a picture rather than a number.
+ *
+ * NO BORDERS. Not one, with exactly two exceptions: the hairline inside a flag
+ * tile, which is a DATA boundary (without it Japan's flag is a red dot floating
+ * in space), and the focus ring. Elevation is carried by fill, radius and two
+ * layers of soft shadow. Hard-edged bordered boxes are the thing that reads as
+ * machine-generated, and they are absent here on purpose.
+ *
+ * TYPE: Literata is what you READ — place names, the subject of the question,
+ * every number, titles, notes. Archivo is what you USE — options, buttons,
+ * labels, chips. You should be able to tell content from control by the
+ * letterforms alone, before reading a word.
+ *
+ * THE LIGHTEST-STOP RULE: a surface must clear 1.25:1 against the LIGHTEST stop
+ * of the gradient behind it. Checking a card against a gradient's base colour is
+ * how every surface dissolves at the top of the screen.
+ */
+
+:root {
+  /* ground: the sea */
+  --ground-top: #D6E7E5;
+  --ground-bottom: #BFD8DC;
+
+  /* surfaces: paper */
+  --surface: #FFFCF7;
+  --surface-tint: #E3EFEE;
+  --surface-sunk: #EDF4F3;
+  --hairline: rgba(20, 49, 58, .10);
+
+  /* ink */
+  --ink: #14313A;
+  --ink-2: #40606B;
+  --ink-3: #4F6872;
+
+  /* the five meaningful colours. No colour means two things. */
+  --sea: #0D6A7C;            /* you can touch this        */
+  --sea-deep: #0A4E5C;
+  --sea-bright: #12809A;
+  --vermilion: #C23B22;      /* wrong, and the survey mark */
+  --verdigris: #0B7A5E;      /* right                      */
+  --brass: #8A5D10;          /* met but not known — text   */
+  --brass-mark: #C9902B;     /* the same, as a dot or ring */
+
+  --wash-right: #DFF0E9;
+  --wash-wrong: #FBE4DE;
+  --wash-right-veil: rgba(11, 122, 94, .10);
+  --wash-wrong-veil: rgba(194, 59, 34, .10);
+
+  /* chart furniture */
+  --land-unseen: #E8E1D2;
+  --land-shaky: #E9CE9B;
+  --land-known: #14313A;
+  --land-context: #CDE0E1;
+  --contour: rgba(13, 106, 124, .07);
+
+  --font-read: 'Literata', ui-serif, Georgia, serif;
+  --font-use: 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px; --s9: 56px;
+  --gutter: 18px;
+  --stack: 12px;
+  --section: 28px;
+  --safe-b: max(var(--s4), env(safe-area-inset-bottom));
+  --safe-t: max(var(--s3), env(safe-area-inset-top));
+
+  --r-bubble: 18px; --r-card: 26px; --r-tile: 14px;
+  --r-flag: 12px;   --r-map: 22px;  --r-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgba(20,49,58,.05), 0 4px 10px -2px rgba(20,49,58,.07);
+  --shadow-2: 0 2px 4px rgba(20,49,58,.06), 0 10px 24px -6px rgba(20,49,58,.11);
+  --shadow-3: 0 -2px 8px rgba(20,49,58,.06), 0 -18px 48px -12px rgba(20,49,58,.18);
+  --shadow-press: 0 1px 1px rgba(20,49,58,.06);
+
+  --e-out: cubic-bezier(.22,.61,.36,1);
+  --e-soft: cubic-bezier(.34,.9,.3,1);
+  --t-press: 90ms; --t-state: 180ms; --t-card: 280ms; --t-screen: 320ms;
+  --t-stagger: 40ms;
+
+  color-scheme: light;
+}
+
+/* Night Chart. Deep water; paper becomes wet chart-table card. Accents lift,
+   because saturated mid-tones die on a dark ground. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground-top: #0A2027; --ground-bottom: #061318;
+    --surface: #163843; --surface-tint: #1C444F; --surface-sunk: #102B33;
+    --hairline: rgba(233,241,240,.09);
+    --ink: #E9F1F0; --ink-2: #B3C9CD; --ink-3: #93AEB4;
+    --sea: #57C7D9; --sea-deep: #0B4E5E; --sea-bright: #16788C;
+    --vermilion: #FF8D72; --verdigris: #54D6A8; --brass: #E5B863; --brass-mark: #E5B863;
+    --wash-right: #10362F; --wash-wrong: #3A211C;
+    --wash-right-veil: rgba(84,214,168,.12); --wash-wrong-veil: rgba(255,141,114,.12);
+    --land-unseen: #23414A; --land-shaky: #6B5626; --land-known: #E9F1F0;
+    --land-context: #12303A; --contour: rgba(87,199,217,.08);
+    --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 4px 10px -2px rgba(0,0,0,.30), inset 0 1px 0 rgba(233,241,240,.06);
+    --shadow-2: 0 2px 4px rgba(0,0,0,.30), 0 10px 24px -6px rgba(0,0,0,.42), inset 0 1px 0 rgba(233,241,240,.06);
+    --shadow-3: 0 -2px 8px rgba(0,0,0,.30), 0 -18px 48px -12px rgba(0,0,0,.50);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground-top: #0A2027; --ground-bottom: #061318;
+  --surface: #163843; --surface-tint: #1C444F; --surface-sunk: #102B33;
+  --hairline: rgba(233,241,240,.09);
+  --ink: #E9F1F0; --ink-2: #B3C9CD; --ink-3: #93AEB4;
+  --sea: #57C7D9; --sea-deep: #0B4E5E; --sea-bright: #16788C;
+  --vermilion: #FF8D72; --verdigris: #54D6A8; --brass: #E5B863; --brass-mark: #E5B863;
+  --wash-right: #10362F; --wash-wrong: #3A211C;
+  --wash-right-veil: rgba(84,214,168,.12); --wash-wrong-veil: rgba(255,141,114,.12);
+  --land-unseen: #23414A; --land-shaky: #6B5626; --land-known: #E9F1F0;
+  --land-context: #12303A; --contour: rgba(87,199,217,.08);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 4px 10px -2px rgba(0,0,0,.30), inset 0 1px 0 rgba(233,241,240,.06);
+  --shadow-2: 0 2px 4px rgba(0,0,0,.30), 0 10px 24px -6px rgba(0,0,0,.42), inset 0 1px 0 rgba(233,241,240,.06);
+  --shadow-3: 0 -2px 8px rgba(0,0,0,.30), 0 -18px 48px -12px rgba(0,0,0,.50);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* An explicit display beats the UA's [hidden] rule, and then a hidden thing is
+   not hidden. This has bitten twice across these apps. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-use);
+  color: var(--ink);
+  background: linear-gradient(170deg, var(--ground-top) 0%, var(--ground-bottom) 100%) fixed;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* The ground has faint form lines, so paper sits ON something. */
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    repeating-radial-gradient(circle at 18% 12%, transparent 0 38px, var(--contour) 38px 39px),
+    repeating-radial-gradient(circle at 86% 78%, transparent 0 52px, var(--contour) 52px 53px);
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--sea); outline-offset: 2px; border-radius: 6px; }
+
+/* ── the six components ─────────────────────────────────────────────── */
+.bubble {
+  background: var(--surface);
+  border-radius: var(--r-bubble);
+  box-shadow: var(--shadow-1);
+  padding: var(--s4);
+}
+.tap {
+  touch-action: manipulation;
+  transition: transform var(--t-press) var(--e-out), box-shadow var(--t-press) var(--e-out);
+}
+.tap:active { transform: scale(.985); box-shadow: var(--shadow-press); }
+.tap.small:active { transform: scale(.97); }
+
+.tile {
+  width: 44px; height: 44px; border-radius: var(--r-tile); flex: none;
+  background: var(--surface-tint); color: var(--sea);
+  display: grid; place-items: center;
+}
+.tile.lead {
+  background: linear-gradient(145deg, var(--sea-bright), var(--sea-deep));
+  color: #fff;
+  box-shadow: 0 3px 8px -2px rgba(10,78,92,.38);
+}
+.tile svg { width: 24px; height: 24px; fill: none; stroke: currentColor;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  min-height: 34px; padding: 0 var(--s3); border-radius: var(--r-pill);
+  background: var(--surface); box-shadow: var(--shadow-1);
+  font: 600 .8125rem/1 var(--font-use); color: var(--ink-2); white-space: nowrap;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.chip .n { font: 700 1.25rem/1 var(--font-read); font-variant-numeric: tabular-nums; color: var(--ink); }
+
+.ring { width: 44px; height: 44px; flex: none; }
+.ring circle { fill: none; stroke-width: 5; }
+.ring .track { stroke: var(--surface-tint); }
+.ring .fill {
+  stroke: var(--sea); stroke-linecap: round;
+  stroke-dasharray: 106.81;
+  stroke-dashoffset: calc(106.81 * (1 - var(--pct, 0)));
+  transform: rotate(-90deg); transform-origin: 50% 50%;
+  transition: stroke-dashoffset 620ms var(--e-out);
+}
+.ring.mid .fill { stroke: var(--brass-mark); }
+.ring.high .fill { stroke: var(--verdigris); }
+.ring.small { width: 26px; height: 26px; }
+.ring.small circle { stroke-width: 7; }
+
+.label {
+  font: 600 .6875rem/1.3 var(--font-use);
+  letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3);
+}
+
+/* ── shell ──────────────────────────────────────────────────────────── */
+.app { min-height: 100dvh; }
+.screen {
+  padding: var(--safe-t) var(--gutter) calc(var(--safe-b) + var(--s7));
+  max-width: 560px; margin: 0 auto;
+  /* Transform only, never opacity. A fill-mode animation that is frozen —
+     which is what happens in a hidden or throttled tab — would otherwise leave
+     the whole screen sitting at opacity 0 with no way back. Nothing that
+     carries text is allowed to depend on an animation completing. */
+  animation: screen-in var(--t-screen) var(--e-out) both;
+}
+@keyframes screen-in { from { transform: translateY(8px); } }
+
+.boot {
+  position: fixed; inset: 0; display: grid; place-content: center; gap: var(--s3);
+  justify-items: center; z-index: 50;
+  background: linear-gradient(170deg, var(--ground-top), var(--ground-bottom));
+  transition: opacity 260ms var(--e-out);
+}
+.boot.gone { opacity: 0; pointer-events: none; }
+.boot-mark { font: 700 2.6rem/1 var(--font-read); letter-spacing: -.02em; }
+.boot-mark span:first-child { color: var(--ink); }
+.boot-mark span:last-child { color: var(--sea); }
+.boot-sub { font: 400 .9rem/1 var(--font-use); color: var(--ink-3); }
+
+/* ── home ───────────────────────────────────────────────────────────── */
+.home-top { display: flex; align-items: flex-start; justify-content: space-between; padding-top: var(--s3); }
+.wordmark { font: 700 clamp(2.4rem, 11vw, 3.1rem)/1 var(--font-read); letter-spacing: -.02em; }
+.wordmark span:first-child { color: var(--ink); }
+.wordmark span:last-child { color: var(--sea); }
+/* A coastline under the land half; the sea half is left open. */
+.wordmark-rule { width: 30px; height: 2px; background: var(--vermilion); border-radius: 2px; margin-top: 6px; }
+.icon-btn {
+  width: 44px; height: 44px; border-radius: var(--r-pill); display: grid; place-items: center;
+  color: var(--ink-3);
+}
+.icon-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75;
+  stroke-linecap: round; stroke-linejoin: round; }
+
+.hero {
+  margin-top: var(--s5); height: clamp(160px, 26dvh, 210px); isolation: isolate;
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--surface-sunk) 55%, transparent);
+  position: relative; overflow: hidden;
+}
+.hero svg.line { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+.hero .chain { position: absolute; inset: 0; }
+.isle {
+  position: absolute; width: 46px; height: 46px; transform: translate(-50%, -50%);
+  display: grid; place-items: center;
+  animation: isle-in var(--t-card) var(--e-out) both;
+  animation-delay: calc(var(--i) * var(--t-stagger));
+}
+/* No overflow: the path holds every ring of the feature, but the viewBox is the
+   MAIN island's box — so outlying cays would otherwise sprawl across the whole
+   hero. Clipping to the box is what makes each silhouette read as one island. */
+.isle svg { width: 100%; height: 100%; overflow: hidden; }
+.isle path { transition: fill 260ms var(--e-out); }
+.isle .swell { animation: swell 9s ease-in-out infinite; animation-delay: calc(var(--i) * -1.1s); display: block; }
+@keyframes isle-in { from { transform: translate(-50%, calc(-50% + 10px)); } }
+@keyframes swell { 0%, 100% { transform: translateY(-3px); } 50% { transform: translateY(3px); } }
+.isle .mark { position: absolute; top: -2px; right: -4px; color: var(--vermilion); }
+.isle .mark svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.75; fill: none; transform: rotate(6deg); }
+
+.chips { display: flex; gap: var(--s2); margin-top: var(--s4); overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+
+.modes { display: grid; gap: var(--stack); margin-top: var(--s5); }
+.mode {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 76px; padding: 14px var(--s4);
+  background: var(--surface); border-radius: var(--r-bubble); box-shadow: var(--shadow-1);
+  text-align: left; width: 100%;
+}
+.mode.lead { box-shadow: var(--shadow-2); }
+.mode-text { flex: 1; min-width: 0; }
+.mode-title { display: block; font: 600 1.125rem/1.2 var(--font-use); color: var(--ink); }
+.mode-sub { display: block; font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mode-status { display: flex; align-items: center; gap: 6px; font: 600 .8125rem/1 var(--font-use); color: var(--ink-2); }
+.mode-status .n { font: 700 1.125rem/1 var(--font-read); font-variant-numeric: tabular-nums; color: var(--ink); }
+.chev { width: 16px; height: 16px; flex: none; color: var(--ink-3); stroke: currentColor; stroke-width: 2;
+  fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── question ───────────────────────────────────────────────────────── */
+.round { display: flex; flex-direction: column; min-height: 100dvh; }
+.round-top { display: flex; align-items: center; gap: var(--s3); padding-top: var(--s2); }
+.dots { flex: 1; display: flex; gap: 5px; align-items: center; justify-content: center; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); opacity: .3; }
+.dots i.ok { background: var(--verdigris); opacity: 1; }
+.dots i.no { background: var(--vermilion); opacity: 1; }
+.dots i.now { width: 10px; height: 10px; background: var(--ink); opacity: 1; }
+
+.prompt { display: flex; align-items: flex-start; gap: var(--s3); margin: var(--s5) 0 var(--s4); }
+.prompt-text { flex: 1; min-width: 0; }
+.frame { font: 600 .6875rem/1.3 var(--font-use); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.frame b { color: var(--vermilion); font-weight: 700; }
+.subject {
+  font: 700 clamp(2.1rem, 9vw, 3rem)/1.05 var(--font-read);
+  letter-spacing: -.02em; color: var(--ink); margin-top: 6px; text-wrap: balance;
+}
+.subject.plain { font: 600 clamp(1.5rem, 6.5vw, 1.9rem)/1.25 var(--font-read); letter-spacing: -.01em; }
+.prompt-sub { font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: var(--s2); }
+
+.say {
+  width: 44px; height: 44px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: var(--surface-tint); color: var(--sea);
+}
+.say svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; }
+.say.on { background: var(--sea); color: #fff; }
+
+.options { display: grid; gap: var(--stack); }
+.option {
+  position: relative; display: flex; align-items: center; gap: var(--s2);
+  min-height: 64px; padding: var(--s3) var(--s4);
+  background: var(--surface); border-radius: var(--r-bubble); box-shadow: var(--shadow-1);
+  text-align: left; width: 100%;
+  transition: background var(--t-state) var(--e-out), transform var(--t-press) var(--e-out);
+}
+.option-label { flex: 1; font: 500 1.125rem/1.35 var(--font-use); color: var(--ink-2); }
+.option-label.long { font-size: 1rem; line-height: 1.3; }
+.option .say { width: 40px; height: 40px; background: transparent; color: var(--ink-3); opacity: .55; }
+.option.right { background: var(--wash-right); }
+.option.wrong { background: var(--wash-wrong); }
+.option.right::before, .option.wrong::before {
+  content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: var(--r-pill);
+}
+.option.right::before { background: var(--verdigris); }
+.option.wrong::before { background: var(--vermilion); }
+.option.wrong .option-label { text-decoration: line-through; text-decoration-color: var(--vermilion); }
+.verdict-mark { width: 22px; height: 22px; flex: none; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.option.right .verdict-mark { stroke: var(--verdigris); }
+.option.wrong .verdict-mark { stroke: var(--vermilion); }
+
+.flags { display: grid; grid-template-columns: 1fr 1fr; gap: var(--stack); }
+.flagopt { padding: 6px; background: var(--surface); border-radius: var(--r-bubble); box-shadow: var(--shadow-1); }
+.flagopt .art {
+  aspect-ratio: 4/3; border-radius: var(--r-flag); overflow: hidden; position: relative;
+  /* The one legitimate border in the app, and it is DATA: without it Japan's
+     flag is a red dot floating in space. Do not "clean this up". */
+  box-shadow: inset 0 0 0 1px rgba(20,49,58,.14);
+}
+.flagopt .art svg, .flagopt .art img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.flagopt.right { background: var(--wash-right); }
+.flagopt.wrong { background: var(--wash-wrong); }
+
+.figure {
+  background: var(--surface-sunk); border-radius: var(--r-map); padding: var(--s3);
+  display: grid; place-items: center; margin-bottom: var(--s4);
+}
+.figure.flag { padding: 0; overflow: hidden; border-radius: var(--r-card); box-shadow: inset 0 0 0 1px rgba(20,49,58,.14); }
+.figure.flag svg, .figure.flag img { width: 100%; aspect-ratio: 4/3; display: block; }
+.figure svg.shape { width: 100%; height: clamp(150px, 24dvh, 220px); }
+.figure svg.shape path { fill: var(--ink); opacity: .88; }
+
+.mapwell {
+  position: relative; flex: 1; min-height: 40dvh;
+  background: var(--surface-sunk); border-radius: var(--r-map); overflow: hidden;
+}
+.map { width: 100%; height: 100%; display: block; touch-action: none; }
+.map .ctx { fill: var(--land-context); opacity: .55; }
+.map .feat { fill: var(--land-context); }
+.map .feat.cand { fill: var(--surface); stroke: var(--sea); stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
+.map .feat.dot { fill: var(--land-context); }
+.map .feat.cand.dot { fill: var(--surface); }
+.map .feat.right { fill: var(--verdigris); stroke: none; }
+.map .feat.wrong { fill: var(--vermilion); stroke: none; }
+.map .pos { fill: none; stroke: var(--sea); stroke-width: 1.5px; stroke-dasharray: 3 4; opacity: .7;
+  vector-effect: non-scaling-stroke; }
+.map .hit { fill: transparent; }
+.map text.mlabel {
+  font: 600 12px var(--font-use); letter-spacing: .02em; fill: var(--ink); text-anchor: middle;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; stroke-linejoin: round;
+}
+.map .shade-unseen { fill: var(--land-unseen); }
+.map .shade-shaky { fill: var(--land-shaky); }
+.map .shade-known { fill: var(--land-known); }
+
+.mapctl { position: absolute; right: var(--s3); bottom: var(--s3); display: grid; gap: var(--s2); }
+.mapctl button {
+  width: 44px; height: 44px; border-radius: 50%; background: var(--surface);
+  box-shadow: var(--shadow-1); display: grid; place-items: center; color: var(--ink-2);
+}
+.mapctl svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The opt-in clock, deliberately the most ignorable treatment available. */
+.clockline { position: fixed; top: 0; left: 0; height: 2px; background: var(--brass-mark); z-index: 30;
+  transition: width 1s linear; }
+
+/* ── verdict sheet ──────────────────────────────────────────────────── */
+.veil {
+  position: fixed; inset: 0; z-index: 18; pointer-events: none; opacity: 0;
+  transition: opacity 180ms var(--e-out);
+}
+.veil.on { opacity: 1; }
+.veil.right { background: var(--wash-right-veil); }
+.veil.wrong { background: var(--wash-wrong-veil); }
+
+.sheet {
+  position: fixed; inset: auto 0 0 0; z-index: 20;
+  max-height: min(58dvh, 560px);
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;   /* the 0 is load-bearing */
+  background: var(--surface);
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  box-shadow: var(--shadow-3);
+  padding: var(--s3) var(--gutter) var(--safe-b);
+  animation: sheet-in var(--t-card) var(--e-soft) both;
+}
+@keyframes sheet-in { from { opacity: 0; transform: translateY(14px); } }
+.sheet.out { animation: sheet-out 160ms var(--e-out) both; }
+@keyframes sheet-out { to { opacity: 0; transform: translateY(10px); } }
+.sheet-grab { width: 34px; height: 4px; border-radius: 2px; background: var(--hairline); margin: 0 auto var(--s2); }
+.sheet-head { display: flex; gap: var(--s3); align-items: flex-start; position: relative; padding-left: var(--s2); }
+.sheet-head::before { content: ''; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 3px; border-radius: var(--r-pill); }
+.sheet-head.right::before { background: var(--verdigris); }
+.sheet-head.wrong::before { background: var(--vermilion); }
+.sheet-glyph { width: 28px; height: 28px; flex: none; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.sheet-head.right .sheet-glyph { stroke: var(--verdigris); }
+.sheet-head.wrong .sheet-glyph { stroke: var(--vermilion); }
+.sheet-answer { font: 700 clamp(1.6rem, 7vw, 2rem)/1.15 var(--font-read); color: var(--ink); letter-spacing: -.01em; }
+.sheet-context { font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: 3px; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: var(--s3); }
+.sheet-body p {
+  font: 400 1.0625rem/1.65 var(--font-read); color: var(--ink-2);
+  letter-spacing: .01em; max-width: 60ch; margin: 0 0 var(--s3); text-wrap: pretty;
+}
+.sheet-foot { padding-top: var(--s3); }
+
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: var(--s2);
+  width: 100%; min-height: 56px; border-radius: var(--r-pill);
+  background: linear-gradient(145deg, var(--sea-bright), var(--sea-deep));
+  color: #fff; font: 600 1.0625rem/1 var(--font-use); letter-spacing: .01em;
+  box-shadow: var(--shadow-2);
+}
+.btn.quiet { background: var(--surface-tint); color: var(--ink); box-shadow: var(--shadow-1); }
+.btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── generic screen furniture ───────────────────────────────────────── */
+.title { font: 600 1.5rem/1.25 var(--font-read); letter-spacing: -.01em; margin: var(--s4) 0 var(--s2); }
+.lede { font: 400 1.0625rem/1.65 var(--font-read); color: var(--ink-2); max-width: 60ch; text-wrap: pretty; }
+.head { display: flex; align-items: center; gap: var(--s2); padding-top: var(--s2); }
+.head .title { margin: 0; }
+.stack { display: grid; gap: var(--stack); margin-top: var(--s4); }
+.row {
+  display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left;
+  min-height: 64px; padding: var(--s3) var(--s4);
+  background: var(--surface); border-radius: var(--r-bubble); box-shadow: var(--shadow-1);
+}
+.row-text { flex: 1; min-width: 0; }
+.row-title { display: block; font: 600 1.0625rem/1.25 var(--font-use); color: var(--ink); }
+.row-sub { display: block; font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: 2px; }
+.row.on { background: var(--surface); box-shadow: var(--shadow-2); }
+
+.stat { display: flex; align-items: baseline; gap: var(--s2); }
+.stat .n { font: 700 2rem/1 var(--font-read); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.stat .u { font: 600 .6875rem/1 var(--font-use); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--stack); }
+.sentence { font: 400 1.1875rem/1.5 var(--font-read); color: var(--ink); text-wrap: pretty; }
+.muted { color: var(--ink-3); }
+.sep { height: 1px; background: var(--hairline); margin: var(--s5) 0; }
+
+.toggle { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.opt {
+  min-height: 44px; padding: 0 var(--s4); border-radius: var(--r-pill);
+  background: var(--surface-tint); color: var(--ink-2); font: 600 .875rem/1 var(--font-use);
+  display: inline-flex; align-items: center; gap: var(--s2);
+}
+.opt[aria-pressed="true"] { background: var(--sea); color: #fff; }
+.opt .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .5; }
+.opt[aria-pressed="true"] .dot { opacity: 1; }
+
+.list { display: grid; gap: var(--s2); margin-top: var(--s3); }
+.listrow {
+  display: flex; align-items: center; gap: var(--s3); width: 100%; text-align: left;
+  min-height: 56px; padding: var(--s2) var(--s3);
+  background: var(--surface); border-radius: var(--r-bubble); box-shadow: var(--shadow-1);
+}
+.listrow .name { flex: 1; font: 400 1.0625rem/1.3 var(--font-read); color: var(--ink); }
+.listrow .meta { font: 400 .8125rem/1 var(--font-use); color: var(--ink-3); }
+.pip { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.pip.unseen { background: var(--land-unseen); }
+.pip.met { background: var(--brass-mark); }
+.pip.known { background: var(--verdigris); }
+.pip.secure { background: var(--sea); }
+
+.thumb { width: 44px; height: 34px; flex: none; border-radius: 8px; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(20,49,58,.14); }
+.thumb svg, .thumb img { width: 100%; height: 100%; display: block; }
+.shapechip { width: 44px; height: 34px; flex: none; }
+.shapechip path { fill: var(--ink); opacity: .75; }
+
+.search {
+  width: 100%; min-height: 48px; border-radius: var(--r-pill); border: 0;
+  background: var(--surface); box-shadow: var(--shadow-1); padding: 0 var(--s4);
+  font: 400 1rem/1 var(--font-use); color: var(--ink);
+}
+.search::placeholder { color: var(--ink-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important; }
+  :root { --t-stagger: 0ms; }
+  .sheet { animation: sheet-fade 120ms both; }
+  @keyframes sheet-fade { from { opacity: 0; } }
+}

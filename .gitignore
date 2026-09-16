@@ -1,0 +1,5 @@
+node_modules/
+sources/ne_*.geojson
+dist/
+.DS_Store
+build/report.txt
