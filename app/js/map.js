@@ -131,6 +131,9 @@ export class MapView {
     this.collide = collide;
     this.map = map;
     this.svg.setAttribute('data-map', map.id);
+    // A handful of candidates means the rest of the map can step back; a whole
+    // region in play (Label the Map) means there is no field to dim.
+    this.svg.classList.toggle('few', candidates.length > 0 && candidates.length <= 8);
     this.gCtx.replaceChildren();
     this.gBase.replaceChildren();
     this.gHit.replaceChildren();

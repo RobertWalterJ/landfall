@@ -14,7 +14,7 @@ Launch Landfall.bat          →  http://localhost:8796
 
 | | |
 |---|---|
-| 1,742 places | 197 countries · 53 territories · 60 named Caribbean islands · 971 sub-national units · 461 cities |
+| 1,747 places | 197 countries · 53 territories · 65 named Caribbean islands · 971 sub-national units · 461 cities |
 | 51 packs | the Caribbean, all the world's countries, regional country sets, 34 sub-national sets, 7 city sets |
 | 44 groups | the Leeward Islands, the Windwards, the Grenadines, the ABCs, the SSS islands, the Maritimes, New England, the Maghreb, Melanesia… |
 | 43 maps | pre-projected at build time; no projection or topology library ships |
@@ -65,7 +65,7 @@ otherwise the largest of the tagged cities — which recovers Lanzhou, Shenyang,
 Kunming and Sapporo. All 51 US, 13 Canadian, 31 Chinese and 47 Japanese capitals
 were then checked by hand.
 
-**Island detail is joined on geography, not on names.** The 60 curated islands
+**Island detail is joined on geography, not on names.** The 65 curated islands
 arrived with a name and a coordinate and nothing else, so
 `build/harvest-islands.mjs` asks Wikidata for every island in the Caribbean box
 and matches by distance *and* name — within 30 km of the coordinate that already
@@ -80,6 +80,15 @@ Saba, Sint Eustatius, Bonaire, Bequia, Vieques and Culebra all fly their own
 flag, and 23 islands now have a chief town. Tobago and Carriacou are absent on
 purpose — both fly a flag, neither has one on Commons under a title that can be
 verified automatically, and guessing a file is how you teach the wrong flag.
+
+**Some islands simply are not drawn.** Petite Martinique, Petit Saint Vincent,
+Palm Island, the Tobago Cays, Ronde Island, Isle à Quatre and Young Island are
+real Grenadines and appear in none of Natural Earth's layers at 10m — not in
+their country's own geometry and not in the minor-islands layer. Their
+coordinates are recorded as a comment in `build/curated/islands.mjs` so they can
+move up the moment a finer coastline source is added, and the build stays quiet
+about them instead of reporting the same seven failures every run. Mayreau is
+the one that *is* there, and it is claimed from the minor-islands layer.
 
 **Contested groupings are never the answer.** Dominica is Leeward in the old
 British administrative sense and Windward in modern geographic usage. Barbados is
@@ -128,6 +137,27 @@ Two numbers in that design came from simulation rather than taste
 - A place is introduced by **where it is** and nothing else. Its capital, flag and
   group only become askable once you can reliably find it. Asking for Basseterre
   before you know where Saint Kitts is is asking you to memorise a word pair.
+
+## Reading the map
+
+The figure/ground was wrong at first and it mattered more than anything else on
+the screen: the well was near-white, the land was a pale cyan, and the islands
+sank into the sea. On a chart **the water carries the colour and the land is the
+paper**, so that is now the arrangement — mid-tone water, warm sand land, and a
+hairline coastline, which is what makes a four-pixel island crisp rather than a
+smudge.
+
+**The candidates are found by dimming the field, not by brightening the
+figure.** When eight or fewer features are in play, everything else drops to 45%
+and the context coastlines to 25%; the four candidates keep their paper fill, a
+2px outline and a small halo. Nothing has to change colour, so all four are
+still drawn identically to each other — which is the rule that keeps a locate
+question honest. In Label the Map the whole region is in play, so nothing is
+dimmed.
+
+The hierarchy, and no colour means two things: **sand** is land at rest,
+**paper + outline** is in play, **ink** is named, **brass** is given, and
+verdigris and vermilion are only ever right and wrong.
 
 ## Design constraints
 

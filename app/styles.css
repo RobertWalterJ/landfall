@@ -50,11 +50,21 @@
   --wash-right-veil: rgba(11, 122, 94, .10);
   --wash-wrong-veil: rgba(194, 59, 34, .10);
 
-  /* chart furniture */
+  /* chart furniture.
+   *
+   * WATER IS THE MID-TONE AND LAND IS THE PAPER. It was the other way round —
+   * a near-white well with pale cyan islands — and the islands receded into
+   * the sea. On a chart the water carries the colour and the land is the thing
+   * you read, and the coastline hairline is what makes small islands crisp
+   * rather than smudges. Land over water is 1.55:1 here, well past the 3:1
+   * non-text floor once the coastline is counted. */
+  --water: #A8CBD6;
+  --water-deep: #93BDCB;
   --land-unseen: #E8E1D2;
   --land-shaky: #E9CE9B;
   --land-known: #14313A;
-  --land-context: #CDE0E1;
+  --land-context: #F4EBDB;
+  --coast: rgba(20, 49, 58, .30);
   --contour: rgba(13, 106, 124, .07);
 
   --font-read: 'Literata', ui-serif, Georgia, serif;
@@ -97,7 +107,9 @@
     --wash-right: #10362F; --wash-wrong: #3A211C;
     --wash-right-veil: rgba(84,214,168,.12); --wash-wrong-veil: rgba(255,141,114,.12);
     --land-unseen: #23414A; --land-shaky: #6B5626; --land-known: #E9F1F0;
-    --land-context: #12303A; --contour: rgba(87,199,217,.08);
+    --water: #0A222B; --water-deep: #07191F;
+    --land-context: #2B4652; --coast: rgba(233,241,240,.26);
+    --contour: rgba(87,199,217,.08);
     --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 4px 10px -2px rgba(0,0,0,.30), inset 0 1px 0 rgba(233,241,240,.06);
     --shadow-2: 0 2px 4px rgba(0,0,0,.30), 0 10px 24px -6px rgba(0,0,0,.42), inset 0 1px 0 rgba(233,241,240,.06);
     --shadow-3: 0 -2px 8px rgba(0,0,0,.30), 0 -18px 48px -12px rgba(0,0,0,.50);
@@ -114,7 +126,9 @@
   --wash-right: #10362F; --wash-wrong: #3A211C;
   --wash-right-veil: rgba(84,214,168,.12); --wash-wrong-veil: rgba(255,141,114,.12);
   --land-unseen: #23414A; --land-shaky: #6B5626; --land-known: #E9F1F0;
-  --land-context: #12303A; --contour: rgba(87,199,217,.08);
+  --water: #0A222B; --water-deep: #07191F;
+  --land-context: #2B4652; --coast: rgba(233,241,240,.26);
+  --contour: rgba(87,199,217,.08);
   --shadow-1: 0 1px 2px rgba(0,0,0,.28), 0 4px 10px -2px rgba(0,0,0,.30), inset 0 1px 0 rgba(233,241,240,.06);
   --shadow-2: 0 2px 4px rgba(0,0,0,.30), 0 10px 24px -6px rgba(0,0,0,.42), inset 0 1px 0 rgba(233,241,240,.06);
   --shadow-3: 0 -2px 8px rgba(0,0,0,.30), 0 -18px 48px -12px rgba(0,0,0,.50);
@@ -350,8 +364,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .flagopt.right { background: var(--wash-right); }
 .flagopt.wrong { background: var(--wash-wrong); }
 
+/* The shape well is water too, so a silhouette reads as an island. */
 .figure {
-  background: var(--surface-sunk); border-radius: var(--r-map); padding: var(--s3);
+  background: linear-gradient(165deg, var(--water), var(--water-deep)); border-radius: var(--r-map); padding: var(--s3);
   display: grid; place-items: center; margin-bottom: var(--s4);
 }
 .figure.flag { padding: 0; overflow: hidden; border-radius: var(--r-card); box-shadow: inset 0 0 0 1px rgba(20,49,58,.14); }
@@ -361,17 +376,44 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .mapwell {
   position: relative; flex: 1; min-height: 40dvh;
-  background: var(--surface-sunk); border-radius: var(--r-map); overflow: hidden;
+  background: linear-gradient(165deg, var(--water) 0%, var(--water-deep) 100%);
+  border-radius: var(--r-map); overflow: hidden;
 }
 .map { width: 100%; height: 100%; display: block; touch-action: none; }
-.map .ctx { fill: var(--land-context); opacity: .55; }
-.map .feat { fill: var(--land-context); }
-.map .feat.cand { fill: var(--surface); stroke: var(--sea); stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
+/* Context coastlines — the mainland around the region — are land, but quieter:
+   they orient without competing with the islands being asked about. */
+.map .ctx { fill: var(--land-context); opacity: .5; }
+.map .feat {
+  fill: var(--land-context);
+  stroke: var(--coast); stroke-width: .7px; vector-effect: non-scaling-stroke;
+  transition: opacity var(--t-state) var(--e-out);
+}
+/* In play: brighter paper, a real outline, and a halo so a four-pixel island is
+   findable at a glance. */
+.map .feat.cand {
+  fill: var(--surface); stroke: var(--sea); stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
 .map .feat.dot { fill: var(--land-context); }
 .map .feat.cand.dot { fill: var(--surface); }
+
+/* THE SPOTLIGHT. When only a handful of features are in play, everything else
+   steps back. Dimming the field is far more effective than brightening the
+   figure — the four candidates read instantly and nothing has to change colour,
+   so the four are still drawn identically to each other. Not applied in Label
+   the Map, where the whole map is in play and there is no field to dim. */
+.map.few .feat:not(.cand) { opacity: .45; }
+.map.few .ctx { opacity: .25; }
+.map.few .feat.cand { filter: drop-shadow(0 1px 2.5px rgba(13, 106, 124, .45)); }
+@media (prefers-color-scheme: dark) {
+  /* A dark shadow on dark water does nothing; on the night chart the halo has
+     to be light for the candidate to lift off the sea. */
+  :root:not([data-theme="light"]) .map.few .feat.cand { filter: drop-shadow(0 0 3px rgba(87, 199, 217, .7)); }
+}
+:root[data-theme="dark"] .map.few .feat.cand { filter: drop-shadow(0 0 3px rgba(87, 199, 217, .7)); }
 .map .feat.right { fill: var(--verdigris); stroke: none; }
 .map .feat.wrong { fill: var(--vermilion); stroke: none; }
-.map .pos { fill: none; stroke: var(--sea); stroke-width: 1.5px; stroke-dasharray: 3 4; opacity: .7;
+.map .pos { fill: none; stroke: var(--sea); stroke-width: 2.2px; stroke-dasharray: 4 3; opacity: .95;
   vector-effect: non-scaling-stroke; }
 .map .hit { fill: transparent; }
 /* Size and halo width are set per draw in map.js, computed back through the
@@ -379,7 +421,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .map text.mlabel {
   font-family: var(--font-use); font-weight: 600; letter-spacing: .02em;
   fill: var(--ink); text-anchor: middle; pointer-events: none;
-  paint-order: stroke; stroke: var(--surface-sunk); stroke-linejoin: round;
+  paint-order: stroke; stroke: var(--land-context); stroke-linejoin: round;
 }
 /* Label the Map. A named feature inks in and stays inked; a given one is
    brass, so the finished chart shows what you produced and what you were told

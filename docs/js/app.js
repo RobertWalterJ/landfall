@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "2026-09-16 14:54";
+const BUILD = "2026-09-16 16:35";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -1193,7 +1193,11 @@ screens.progress = () => {
     mapBox,
     h('div', { class: 'grid2', style: 'margin-top:var(--s5)' },
       h('div', { class: 'bubble' },
-        h('div', { class: 'stat' }, h('span', { class: 'n' }, rec.days), h('span', { class: 'u' }, `of ${rec.of} days`)),
+        // Never a zero dressed up as a statistic. "0 of 50 days" is a reproach;
+        // "not yet" is the same information without the sting.
+        rec.days
+          ? h('div', { class: 'stat' }, h('span', { class: 'n' }, rec.days), h('span', { class: 'u' }, `of ${rec.of} days`))
+          : h('div', { class: 'stat' }, h('span', { class: 'n', style: 'font-size:1.4rem' }, 'not yet')),
         h('div', { class: 'label', style: 'margin-top:6px' }, 'practised')),
       h('div', { class: 'bubble' },
         h('div', { class: 'stat' }, h('span', { class: 'n' }, ledger.itemsMet)),

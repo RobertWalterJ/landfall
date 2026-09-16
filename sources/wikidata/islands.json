@@ -293,6 +293,18 @@
   "q": "Q1024682",
   "km": 0.3
  },
+ "terre-de-haut": {
+  "q": "Q3089172",
+  "km": 1.7
+ },
+ "terre-de-bas": {
+  "q": "Q3089210",
+  "km": 2.6
+ },
+ "redonda": {
+  "q": "Q457261",
+  "km": 0.1
+ },
  "st-vincent-island": {
   "q": "Q379656",
   "km": 0,
@@ -320,6 +332,14 @@
  "union-island": {
   "q": "Q536311",
   "km": 0.4
+ },
+ "mayreau": {
+  "q": "Q1914529",
+  "km": 1.7
+ },
+ "grenada-island": {
+  "q": "Q3116419",
+  "km": 1.6
  },
  "carriacou": {
   "q": "Q795647",

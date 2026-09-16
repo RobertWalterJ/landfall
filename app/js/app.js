@@ -1193,7 +1193,11 @@ screens.progress = () => {
     mapBox,
     h('div', { class: 'grid2', style: 'margin-top:var(--s5)' },
       h('div', { class: 'bubble' },
-        h('div', { class: 'stat' }, h('span', { class: 'n' }, rec.days), h('span', { class: 'u' }, `of ${rec.of} days`)),
+        // Never a zero dressed up as a statistic. "0 of 50 days" is a reproach;
+        // "not yet" is the same information without the sting.
+        rec.days
+          ? h('div', { class: 'stat' }, h('span', { class: 'n' }, rec.days), h('span', { class: 'u' }, `of ${rec.of} days`))
+          : h('div', { class: 'stat' }, h('span', { class: 'n', style: 'font-size:1.4rem' }, 'not yet')),
         h('div', { class: 'label', style: 'margin-top:6px' }, 'practised')),
       h('div', { class: 'bubble' },
         h('div', { class: 'stat' }, h('span', { class: 'n' }, ledger.itemsMet)),

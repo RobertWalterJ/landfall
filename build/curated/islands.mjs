@@ -14,6 +14,17 @@
 // `group` is the island group used for the grouping questions; see groups.mjs
 // for where the contested boundaries are handled.
 
+// Islands that belong here and are NOT here, because Natural Earth does not
+// draw them at 10m — not in a country's own geometry and not in the minor
+// islands layer either. They are recorded rather than quietly forgotten: the
+// moment a finer coastline source is added they can move up into the list, and
+// until then the build stays silent instead of reporting the same seven
+// failures on every run.
+//
+//   Petit Saint Vincent   12.545 -61.385      Palm Island (Prune)  12.583 -61.400
+//   Isle à Quatre         12.955 -61.235      Young Island         13.128 -61.213
+//   Petite Martinique     12.525 -61.383      Ronde Island         12.303 -61.583
+//   Tobago Cays           12.628 -61.352
 export const ISLANDS = [
   // ── The Bahamas ────────────────────────────────────────────────────────
   { id: 'grand-bahama', name: 'Grand Bahama', parent: 'BS', lat: 26.63, lon: -78.35 },
@@ -82,6 +93,11 @@ export const ISLANDS = [
     note: 'The flat limestone eastern wing, separated from Basse-Terre by the Rivière Salée.' },
   { id: 'marie-galante', name: 'Marie-Galante', parent: 'GP', lat: 15.93, lon: -61.27 },
   { id: 'la-desirade', name: 'La Désirade', parent: 'GP', lat: 16.32, lon: -61.05 },
+  { id: 'terre-de-haut', name: 'Terre-de-Haut', parent: 'GP', lat: 15.866, lon: -61.583,
+    alt: ['Les Saintes'], note: 'The inhabited half of Les Saintes, in a bay often called one of the finest in the world.' },
+  { id: 'terre-de-bas', name: 'Terre-de-Bas', parent: 'GP', lat: 15.855, lon: -61.640 },
+  { id: 'redonda', name: 'Redonda', parent: 'AG', lat: 16.938, lon: -62.346,
+    note: 'The third island of Antigua and Barbuda: an uninhabited rock with a literary "kingdom" attached to it.' },
 
   // ── Windwards and the Grenadines ───────────────────────────────────────
   { id: 'st-vincent-island', name: 'Saint Vincent', parent: 'VC', lat: 13.25, lon: -61.20 },
@@ -90,6 +106,9 @@ export const ISLANDS = [
   { id: 'mustique', name: 'Mustique', parent: 'VC', lat: 12.88, lon: -61.19 },
   { id: 'canouan', name: 'Canouan', parent: 'VC', lat: 12.70, lon: -61.33 },
   { id: 'union-island', name: 'Union Island', parent: 'VC', lat: 12.60, lon: -61.43 },
+  { id: 'mayreau', name: 'Mayreau', parent: 'VC', lat: 12.638, lon: -61.393 },
+  { id: 'grenada-island', name: 'Grenada', parent: 'GD', lat: 12.117, lon: -61.678,
+    note: 'The main island — Carriacou and Petite Martinique are the other two.' },
   { id: 'carriacou', name: 'Carriacou', parent: 'GD', lat: 12.48, lon: -61.45 },
   { id: 'trinidad', name: 'Trinidad', parent: 'TT', lat: 10.45, lon: -61.30 },
   { id: 'tobago', name: 'Tobago', parent: 'TT', lat: 11.25, lon: -60.68 },

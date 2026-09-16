@@ -147,14 +147,51 @@ function ringCentroid(ring) {
   return [x / ring.length, y / ring.length];
 }
 
+// The smallest islands are not part of their country's own geometry at all —
+// Natural Earth files them in a separate minor-islands layer, unnamed. Mayreau
+// is there; Petite Martinique and the rest simply are not drawn at 10m. Same
+// rule as everything else: the point must land inside a real polygon.
+const minorIslands = load('ne_10m_minor_islands.geojson').features;
+const minorClaimed = new Set();
+function claimMinor(pt) {
+  for (let f = 0; f < minorIslands.length; f++) {
+    const polys = polysOf(minorIslands[f].geometry);
+    for (let p = 0; p < polys.length; p++) {
+      const key = f + ':' + p;
+      if (minorClaimed.has(key)) continue;
+      if (inRing(pt, polys[p][0])) { minorClaimed.add(key); return polys[p]; }
+    }
+  }
+  return null;
+}
+
 const claimed = new Map();   // parent -> Set(polygon index)
 let islandsBuilt = 0;
+let fromMinor = 0;
 for (const isl of ISLANDS) {
   const pid = 'c:' + isl.parent;
   const polys = polysOf(geom.get(pid)?.[0]);
   if (!polys.length) { note('island', isl.id, 'has no parent geometry', isl.parent); continue; }
   const pt = [isl.lon, isl.lat];
   let hit = polys.findIndex((poly) => inRing(pt, poly[0]));
+  if (hit < 0) {
+    const minor = claimMinor(pt);
+    if (minor) {
+      const parent = items.get(pid);
+      const extra = islandData[isl.id] || {};
+      const it = add({
+        i: 'i:' + isl.id, n: isl.name, k: 'island',
+        alt: [...new Set([...(isl.alt || []), ...(extra.alt || [])])],
+        pr: pid, cap: extra.cap || null, caps: extra.cap ? [extra.cap] : [],
+        fl: islandFlags[isl.id] ? 'isl-' + isl.id : null,
+        ll: [isl.lat, isl.lon], t: 2, note: isl.note || null, pk: [],
+        x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n },
+      });
+      geom.set(it.i, [{ type: 'Polygon', coordinates: minor }]);
+      islandsBuilt++; fromMinor++;
+      continue;
+    }
+  }
   if (hit < 0) {
     let best = -1, bestD = Infinity;
     polys.forEach((poly, k) => {
@@ -580,7 +617,7 @@ writeFileSync(join(OUT, 'core.json'), coreJson);
 const kinds = {};
 for (const it of itemList) kinds[it.k] = (kinds[it.k] || 0) + 1;
 console.log('\nitems:', itemList.length, JSON.stringify(kinds));
-console.log('islands claimed:', islandsBuilt, 'of', ISLANDS.length);
+console.log('islands claimed:', islandsBuilt, 'of', ISLANDS.length, fromMinor ? `(${fromMinor} from the minor-islands layer)` : '');
 console.log('packs:', packs.length, ' groups:', groups.length, ' maps:', Object.keys(mapMeta).length);
 console.log('core.json', Math.round(coreJson.length / 1024) + 'KB   maps', Math.round(mapBytes / 1024) + 'KB   flags', Math.round(JSON.stringify(flags).length / 1024) + 'KB');
 console.log('\nmaps:');
