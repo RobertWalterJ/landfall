@@ -143,13 +143,19 @@ export class Round {
   }
 
   summary() {
-    const right = this.results.filter((r) => r.right).length;
+    // A place you have never been shown is not a question you got wrong — it
+    // is a teaching trial, and a four-option guess with no information scores
+    // 25% by arithmetic. Scoring them made day one read "5/14" when what it
+    // actually reported was how many places he had never seen before.
+    const scored = this.results.filter((r) => r.q.why !== 'new');
+    const right = scored.filter((r) => r.right).length;
     const missed = this.results.filter((r) => !r.right).map((r) => r.q);
     return {
-      asked: this.results.length,
+      asked: scored.length,
       right,
+      firstSeen: this.results.length - scored.length,
       missed,
-      pct: this.results.length ? right / this.results.length : 0,
+      pct: scored.length ? right / scored.length : 0,
       bestStreak: this.bestStreak,
       seconds: Math.round((Date.now() - this.startedAt) / 1000),
       newItems: this.asked.filter((q) => q.why === 'new').length,

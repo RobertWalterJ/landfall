@@ -74,16 +74,29 @@ function impulse(c, seconds = 1.1, decay = 3.2) {
 
 function buildBus(c) {
   const master = c.createGain();
-  master.gain.value = 0.9;
+  // Built while speech is already running? Start ducked, or the first cue
+  // talks straight over the voice.
+  master.gain.value = ducked ? 0.22 : 0.9;
 
   // Cues can land on top of each other — an answer, a sheet arriving and a
-  // milestone bell inside 200 ms. Without this they simply add and clip.
+  // milestone bell inside 200 ms — so there is a limiter. But it has to be set
+  // where the audio actually IS.
+  //
+  // At threshold -16 with a knee of 14 the knee spanned -23 to -9 dBFS, and
+  // the loudest cue here is -23 short-term. Nothing ever crossed it, so the
+  // node did no limiting at all — while still applying Chrome's unconditional
+  // makeup gain, which measured as a flat +4 dB. Every level in this file was
+  // therefore tuned through a boost that does not exist in Firefox or Safari.
+  // Now it sits low enough to catch a real stack, and the makeup is explicit
+  // and mine.
   const comp = c.createDynamicsCompressor();
-  comp.threshold.value = -16;
-  comp.knee.value = 14;
-  comp.ratio.value = 6;
+  comp.threshold.value = -30;
+  comp.knee.value = 6;
+  comp.ratio.value = 3;
   comp.attack.value = 0.003;
   comp.release.value = 0.18;
+  const makeup = c.createGain();
+  makeup.gain.value = 1.6;
 
   const verb = c.createConvolver();
   verb.buffer = impulse(c);
@@ -98,8 +111,8 @@ function buildBus(c) {
   const send = c.createGain();
   send.gain.value = 1;
   send.connect(verb).connect(verbTone).connect(verbGain).connect(master);
-  master.connect(comp).connect(c.destination);
-  return { master, comp, send, verbGain };
+  master.connect(comp).connect(makeup).connect(c.destination);
+  return { master, comp, makeup, send, verbGain };
 }
 
 // -- helpers -------------------------------------------------------------
@@ -258,10 +271,15 @@ export function aim() {
 
 // Right. Up the pentatonic, folding back an octave at the top so a long streak
 // never turns shrill.
-export function right() {
-  step++;
+// `n` is the round's own streak. The module used to keep its own counter that
+// nothing ever reset, so finishing a round on nine and starting another put
+// your first correct answer at rung ten — and Label the Map shares this
+// function, so a long sweep drove the quiz's ladder past twenty and rang the
+// milestone bell at a displayed streak of three. One source of truth.
+export function right(n = null) {
+  step = n == null ? step + 1 : n;
   if (!on) return;
-  const i = step - 1;
+  const i = Math.max(0, step - 1);
   const note = LADDER[i < LADDER.length ? i : FOLD + ((i - LADDER.length) % (LADDER.length - FOLD))];
   noise(2400, { dur: 0.012, gain: 0.022, verb: 0.05 });
   struck(note, { dur: 0.5, gain: 0.1, verb: 0.32 });

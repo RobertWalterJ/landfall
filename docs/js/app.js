@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "1.15 · Sep 17, 2026, 19:26 · 96cedc7";
+const BUILD = "1.16 · Sep 17, 2026, 19:43 · e5c81dd";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -367,6 +367,8 @@ function renderQuestion(wrap) {
     h('button', { class: 'icon-btn tap small', 'aria-label': 'Sound', onclick: (e) => {
       const on = !State.settings().sound;
       State.set({ sound: on }); sound.setSound(on);
+      if (on) sound.ink();   // the toggle was silent in the ON direction, which
+                             // is the only direction anyone ever discovers it in
       e.currentTarget.style.opacity = on ? '1' : '.4';
     }, html: svg('<path d="M5 9.5v5h3.2L13 19V5L8.2 9.5z"/><path d="M16.2 9.2a4 4 0 0 1 0 5.6"/>') }));
   if (!State.settings().sound) top.lastChild.style.opacity = '.4';
@@ -674,7 +676,7 @@ function answer(choiceId) {
   q.answered = true;
   stopClock();
   const verdict = round.answer(choiceId);
-  if (verdict.right) sound.right(); else sound.wrong();
+  if (verdict.right) sound.right(round.streak); else sound.wrong();
   setTimeout(() => sound.reveal(verdict.right), 190);   // the sheet, a beat later
 
   // Show what you picked AND what was right, both at once.
@@ -1138,11 +1140,17 @@ screens.sweep = ({ key, dir }) => {
   }
 
   function right(it, spelling) {
-    sound.right();
-    sound.ink();
+    sound.ink();          // one gesture, one sound — see sound.js on the ladder
     const missedBefore = sweep.missed.has(it.i);
-    if (!missedBefore) { sweep.firstTime++; State.answer(it.i, 'place', true, null, { bonus: dir === 'name' ? 0.25 : 0.15 }); }
-    else { sweep.afterMiss++; State.answer(it.i, 'place', true, null, { bonus: dir === 'name' ? 0.25 : 0.15 }); }
+    // A sweep is not a review queue. Naming twenty islands in one sitting
+    // multiplied twenty intervals by ease whether or not any of them were due
+    // — the exact spacing leak State.answer already guards against, bypassed
+    // by the one mode the whole app is pointed at. The ease bonus and the
+    // record still count; only the interval waits its turn.
+    const due = (State.card(it.i, 'place')?.due ?? Infinity) <= Date.now();
+    const grade = { bonus: dir === 'name' ? 0.25 : 0.15, practice: !due };
+    if (!missedBefore) { sweep.firstTime++; State.answer(it.i, 'place', true, null, grade); }
+    else { sweep.afterMiss++; State.answer(it.i, 'place', true, null, grade); }
     sweep.named.set(it.i, missedBefore ? 'miss' : 'clean');
     sweep.i++;
     if (spelling) return showSpelling(it, spelling);
@@ -1525,7 +1533,7 @@ screens.settings = () => {
       [['auto', 'After a pause'], ['tap', 'Only when I tap']], 'advance'),
     seg('Clock', 'Off by default. A clock measures how fast you read, not what you know.',
       [[0, 'No clock'], [20, '20 seconds'], [40, '40 seconds']], 'clock'),
-    seg('Sound', null, [[true, 'On'], [false, 'Off']], 'sound', (v) => sound.setSound(v)),
+    seg('Sound', null, [[true, 'On'], [false, 'Off']], 'sound', (v) => { sound.setSound(v); if (v) sound.ink(); }),
     seg('Theme', null, [['system', 'Match the phone'], ['light', 'Chart'], ['dark', 'Night chart']], 'theme', applyTheme),
     h('div', { class: 'sep' }),
     h('div', { class: 'label' }, 'About'),

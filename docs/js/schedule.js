@@ -46,7 +46,22 @@ export const DOWN_PAT_AT = 3;
 export const SECURE_AT = 90;
 const FRONTIER_ITEMS = 12;                // places unsettled at once, per pool
 const LOAD_CEILING = 25;                  // projected reviews per day
-const LEARN_STEPS = [3, 9];               // questions later, inside the round
+// ONE return inside the round, then tomorrow.
+//
+// It was [3, 9], which cost about three slots of a fourteen-question round per
+// new card and made learning-step repeats 46% of everything asked — at 66%
+// accuracy, the worst-performing trial type in the app. Karpicke & Roediger
+// 2008, which the requeue comment cites, found that repeated retrieval WITHIN
+// the initial session contributed little to one-week retention; the durable
+// gain came from retrieval spread ACROSS sessions (Cepeda et al. 2006). So the
+// third retrieval moves to tomorrow, where it is worth something.
+const LEARN_STEPS = [5];                  // questions later, inside the round
+// One slot a round is kept for a second facet. Measured over eight weeks on
+// the Caribbean: at 0 the pack is fully met but locate is 62% of every question
+// and flags and capitals are 2% each; at 2 the variety is lovely and only 54 of
+// 93 places are ever met. At 1 — 71 met, 33 known, twelve question kinds,
+// locate down from 62% to 43%, flags and capitals asked from day seven.
+const DEPTH_PER_ROUND = 1;
 const FACET_UNLOCK_AT = 5;                // days on the previous facet
 // The order new material is met in, before difficulty is even considered.
 const KIND_RANK = { country: 0, territory: 1, admin1: 1, island: 2, city: 3 };
@@ -93,7 +108,13 @@ const newCard = () => ({ iv: 0, e: EASE_START, reps: 0, lapses: 0, due: 0, last:
 // What the app is allowed to claim about a card. Four words, defined on the
 // interval, and they are the only words the app uses.
 // Right three times in a row, most recently. Says nothing about next week.
-export const cardDownPat = (c) => !!c && c.ok && (c.run || 0) >= DOWN_PAT_AT;
+export const isLapsing = (c) => !!c && c.st !== 'new' && c.iv > 0 && now() - c.due > c.iv * DAY * 0.5;
+
+// Three right in a row, AND not already fading. Without the second clause a
+// place answered right three times in March still reads "down pat" in
+// September — cardScore fades with time and this did not, so the two rungs of
+// the same ladder disagreed with each other.
+export const cardDownPat = (c) => !!c && c.ok && (c.run || 0) >= DOWN_PAT_AT && !isLapsing(c);
 
 export function cardState(c) {
   if (!c || c.st === 'new') return 'unseen';
@@ -113,7 +134,6 @@ export function cardScore(c) {
   if (isLapsing(c)) s *= 0.6;
   return s;
 }
-export const isLapsing = (c) => !!c && c.st !== 'new' && c.iv > 0 && now() - c.due > c.iv * DAY * 0.5;
 
 export const State = {
   data: blank(),
@@ -169,7 +189,7 @@ export const State = {
   // it can go down, and it is what he actually wants to be able to say.
   packLedger(items, facetsFor) {
     let cards = 0, met = 0, known = 0, secure = 0, pat = 0;
-    let itemsKnown = 0, itemsMet = 0, itemsPat = 0, sum = 0;
+    let itemsKnown = 0, itemsDeep = 0, itemsMet = 0, itemsPat = 0, sum = 0;
     const rank = { unseen: 0, met: 1, known: 2, secure: 3 };
     for (const it of items) {
       const fs = (facetsFor ? facetsFor(it) : FACET_ORDER).filter(Boolean);
@@ -193,12 +213,20 @@ export const State = {
       }
       if (any) itemsMet++;
       if (allPat && !patFail) itemsPat++;
-      if (fs.length && (worst === 'known' || worst === 'secure')) itemsKnown++;
+      // "You can name it" is a claim about WHERE IT IS, not about knowing every
+      // fact attached to it. Taking the minimum across all supported facets —
+      // with a locked facet counting as unseen — made the headline structurally
+      // unreachable: after six months of daily play it read "you can name 1 of
+      // 93" when the truth on the place facet was 49. The strict reading is
+      // kept below as `itemsDeep` for anyone who wants it.
+      const primary = cardState(this.data.cards[it.i + '|' + fs[0]]);
+      if (primary === 'known' || primary === 'secure') itemsKnown++;
+      if (fs.length && (worst === 'known' || worst === 'secure')) itemsDeep++;
       sum += this.itemMastery(it.i, fs);
     }
     return {
       cards, met, known, secure, pat,
-      items: items.length, itemsMet, itemsKnown, itemsPat,
+      items: items.length, itemsMet, itemsKnown, itemsDeep, itemsPat,
       pct: items.length ? sum / items.length : 0,
     };
   },
@@ -248,8 +276,25 @@ export const State = {
       } else {
         c.iv = Math.min(MAX_INTERVAL, Math.max(1, Math.round(c.iv * c.e)));
         c.due = now() + c.iv * DAY;
+        // EASE HAD NO WAY UP. The bonus below is real, but it is paid for
+        // `q.recall` or `q.cruel` and no question kind ever sets either flag —
+        // so ease only ever came off, 0.25 at a time, and a third of all cards
+        // ended up pinned to the 1.35 floor, where reaching the ceiling takes
+        // nineteen flawless reviews instead of eight.
+        //
+        // RECOVERY, NOT GROWTH. This only climbs back toward the starting ease,
+        // never past it: the fault was a ratchet with no pawl, not a scheduler
+        // that was too cautious. Letting it run free stretched the seventh
+        // correct answer from about a month to sixty-seven days, which is a
+        // different and worse bug.
+        if (c.reps - c.lapseRep >= 3 && c.e < EASE_START) {
+          c.e = Math.min(EASE_START, c.e + 0.05);
+        }
       }
       if (bonus) c.e = clamp(c.e + bonus, EASE_MIN, EASE_MAX);
+      // The high-water interval: how settled this card has EVER been. The
+      // frontier uses it to tell "never learned" from "learned and lapsed".
+      c.top = Math.max(c.top || 0, c.iv);
     } else {
       if (c.st === 'review' || c.st === 'relearning') {
         if (c.st === 'review') { c.ivBefore = c.iv; c.lapses++; c.lapseRep = c.reps; }
@@ -416,7 +461,7 @@ export class Scheduler {
     this.asked = new Set();
     this.n = 0;
     this.lastKey = null;              // never the same place twice running
-    this.served = { new: 0, review: 0, relearn: 0 };
+    this.served = { new: 0, review: 0, relearn: 0, depth: 0 };
     this.length = length;
   }
 
@@ -454,13 +499,27 @@ export class Scheduler {
     return FACET_ORDER.filter((f) => s.includes(f));
   }
 
-  // A facet opens when the one before it reaches five days on this item.
+  // A facet opens once the PLACE holds for five days — not once the facet
+  // before it does.
+  //
+  // The chain was six deep, and the only part of it the evidence supports is
+  // the first gate: location is the retrieval cue, so a capital learned before
+  // a location is a free-floating word pair. Nothing in Stevens & Coupe or
+  // Hirtle & Jonides says a flag must wait behind a capital; that is spatial
+  // CONTAINMENT, and it is handled separately by ready().
+  //
+  // The chain also made depth an accident of shape. A plain country supports
+  // [place, flag, capital] and saw flags on day 9; a Caribbean territory
+  // supports [place, parent, group, flag, capital] and saw them on day 27 —
+  // identical content, three weeks apart, because of how many facets it
+  // happened to have. And every facet was hostage to the weakest link: one
+  // leech on `parent` sealed off flag, capital and facts for good.
   facetOpen(it, facet) {
     const order = this.supported(it);
     const idx = order.indexOf(facet);
     if (idx <= 0) return true;
-    const prev = State.card(it.i, order[idx - 1]);
-    return !!prev && prev.iv >= FACET_UNLOCK_AT;
+    const place = State.card(it.i, order[0]);
+    return !!place && place.iv >= FACET_UNLOCK_AT;
   }
 
   // Places still being learned, measured on the PRIMARY facet only.
@@ -486,7 +545,31 @@ export class Scheduler {
       // places for five weeks at a time: a place at ten days with five clean
       // retrievals is not occupying any working memory, and counting it as
       // in-flight put the whole Caribbean out of reach.
-      if (c.st === 'relearning' || c.iv < FACET_UNLOCK_AT) n++;
+      // And a THIRD mistake, found the same way: counting relearning cards
+      // meant the frontier filled with broken ones. A mature collection always
+      // holds about a dozen in relearning, so the frontier jammed shut and the
+      // pack stopped introducing anything — permanently, at 35 to 102 places
+      // of 197, after which the collection slowly decayed while he played
+      // daily. Relearning a card that once settled is REVIEW work, not
+      // frontier work. `top` is the high-water interval, so the test is
+      // "has this place ever settled", not "is it settled right now".
+      if ((c.top || c.iv || 0) < FACET_UNLOCK_AT) n++;
+    }
+    return n;
+  }
+
+  // What is actually owed RIGHT NOW. projectedLoad divides a week's reviews by
+  // seven, so a backlog of 56 reads as 8 a day and the ceiling never fires; a
+  // debt you cannot clear in one sitting is the thing that should slow
+  // introduction down, and this measures it directly.
+  backlog() {
+    const t = now();
+    let n = 0;
+    for (const it of this.pool) {
+      for (const f of this.facetsFor(it)) {
+        const c = State.card(it.i, f);
+        if (c && c.st !== 'new' && c.due <= t) n++;
+      }
     }
     return n;
   }
@@ -505,6 +588,12 @@ export class Scheduler {
     return n / 7;
   }
 
+  // Just the frontier. A backlog gate was tried here and measured worse on
+  // every axis that matters: over six months of the world pack it held the
+  // player at 39 places met and 30 known, against 68 and 41 with no gate, and
+  // saved only 17 cards of debt for it. The plateau it was meant to prevent
+  // turned out to be entirely caused by counting relearning cards as frontier
+  // work — fix that, and the debt looks after itself.
   frontierOpen() {
     return this.learningCount() < FRONTIER_ITEMS && this.projectedLoad() < LOAD_CEILING;
   }
@@ -598,6 +687,24 @@ export class Scheduler {
       // — or before the Dominican Republic — asks you to tell an obscure island
       // from a country, which is a different and much harder question than the
       // one intended.
+      // DEPTH NEEDS RESERVED CAPACITY, NOT A RANKING.
+      //
+      // Sorting `first` ahead of everything meant a flag card that had
+      // legitimately unlocked lost every contest to the opening facet of any
+      // island never seen — and with ninety-three places in the pack there is
+      // always such an island. So second facets were never served at all: the
+      // reachable question space stayed about a dozen places on one facet with
+      // three kinds, churned fourteen times a day, and eleven of eighteen
+      // question kinds never appeared in four weeks.
+      //
+      // One new slot per round is kept for depth. It is not a ranking tweak,
+      // because a ranking can always be starved.
+      const depth = fresh.filter((f) => !f.first);
+      if (depth.length && this.served.depth < DEPTH_PER_ROUND) {
+        depth.sort((a, b) => (a.tier - b.tier) || ((b.item.ll?.[0] || 0) - (a.item.ll?.[0] || 0)));
+        this.served.depth++;
+        return this.take(depth[0], 'new', true);
+      }
       fresh.sort((a, b) => (b.first - a.first)
         || (KIND_RANK[a.item.k] - KIND_RANK[b.item.k])
         || (a.tier - b.tier)
@@ -638,9 +745,9 @@ export class Scheduler {
     return this.take(any[Math.floor(Math.random() * Math.min(5, any.length))], 'practice');
   }
 
-  take(card, why) {
+  take(card, why, depth = false) {
     const key = card.itemId + '|' + card.facet;
-    this.serve = { key, prev: this.lastKey, why, lapse: null, held: undefined };
+    this.serve = { key, prev: this.lastKey, why, lapse: null, held: undefined, depth };
     this.lastKey = key;
     this.asked.add(key);
     if (why === 'new') this.served.new++;
@@ -664,7 +771,7 @@ export class Scheduler {
     this.lastKey = s.prev;
     this.asked.delete(key);
     this.n--;
-    if (s.why === 'new') this.served.new--;
+    if (s.why === 'new') { this.served.new--; if (s.depth) this.served.depth--; }
     else if (s.why === 'review') this.served.review--;
     else if (s.why === 'relearn' && s.lapse) this.served.relearn--;
     // Set aside, not merely released. A card no question can be built for is

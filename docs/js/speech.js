@@ -51,13 +51,14 @@ export function say(text, { rate = 0.97 } = {}) {
   if (!text || !('speechSynthesis' in window)) return;
   try {
     speechSynthesis.cancel();
+    onState?.(false);
     const u = new SpeechSynthesisUtterance(String(text));
     if (!voice) voice = choose();
     if (voice) { u.voice = voice; u.lang = voice.lang; }
     u.rate = rate;
-    u.onstart = () => onState?.(true);
-    u.onend = () => onState?.(false);
-    u.onerror = () => onState?.(false);
+    u.onstart = () => { onState?.(true); armGuard(4 + String(text).split(/\s+/).length * 0.9); };
+    u.onend = () => { clearTimeout(guard); onState?.(false); };
+    u.onerror = () => { clearTimeout(guard); onState?.(false); };
     speechSynthesis.speak(u);
   } catch { /* nothing to do */ }
 }
@@ -65,4 +66,15 @@ export function say(text, { rate = 0.97 } = {}) {
 export function stop() {
   try { speechSynthesis.cancel(); } catch { /* nothing to do */ }
   onState?.(false);
+}
+
+// A watchdog, because `onend` is not reliable. Android's speech service drops
+// it under interruption and Safari has historically not fired it after
+// cancel() — and a single missed `onend` leaves the effects ducked to 22% for
+// the rest of the session, which presents as "the sound went quiet" with no
+// way back but a reload.
+let guard = null;
+function armGuard(seconds) {
+  clearTimeout(guard);
+  guard = setTimeout(() => onState?.(false), seconds * 1000);
 }
