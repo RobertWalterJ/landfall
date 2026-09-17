@@ -11,13 +11,28 @@
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = join(ROOT, 'app');
 const targets = [join(ROOT, 'docs'), join(ROOT, 'dist', 'web')];
 
-const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+// A build you can point at. "Is the thing I am looking at the thing you just
+// pushed?" is not a question anyone should have to answer by feel, so the
+// version, the moment it was built and the commit it came from all ship with
+// it and are visible in the app.
+const git = (args) => {
+  try { return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim(); }
+  catch { return ''; }
+};
+const build = Number(git(['rev-list', '--count', 'HEAD']) || 0) + 1;
+const commit = git(['rev-parse', '--short', 'HEAD']) || 'local';
+const now = new Date();
+const when = now.toLocaleString('en-CA', {
+  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+});
+const stamp = `1.${build} · ${when} · ${commit}`;
 const problems = [];
 
 function walk(dir, out = []) {
@@ -58,8 +73,9 @@ for (const out of targets) {
   cpSync(APP, out, { recursive: true });
   // Stamp the build so "About" can say which one is on the phone.
   const appjs = join(out, 'js', 'app.js');
-  const text = readFileSync(appjs, 'utf8').replace("'dev (unstamped)'", JSON.stringify(stamp));
-  writeFileSync(appjs, text);
+  writeFileSync(appjs, readFileSync(appjs, 'utf8').replace("'dev (unstamped)'", JSON.stringify(stamp)));
+  const sw = join(out, 'sw.js');
+  writeFileSync(sw, readFileSync(sw, 'utf8').replace("'landfall-v1-dev'", JSON.stringify('landfall-v1-' + build)));
   writeFileSync(join(out, '.nojekyll'), '');
 }
 

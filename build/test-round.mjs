@@ -33,6 +33,28 @@ const realNow = Date.now;
 let clock = realNow();
 Date.now = () => clock;
 
+// A SEEDED learner, so a failure means something.
+//
+// The scheduler picks with Math.random in several places, so an unseeded run
+// gave a different answer every time and the thresholds below had to be set
+// loose enough to clear the low tail. That made the suite cry wolf on good
+// code and — worse — let a real back-to-back-question bug hide inside the
+// noise for several runs at a time. Seeding it costs four lines and makes
+// every number here reproducible; the seed is reset per scenario so results
+// do not depend on what ran before. Pass a different seed to sample the
+// distribution:  node build/test-round.mjs 7
+const SEED = Number(process.argv[2] || 1);
+function mulberry32(a) {
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const reseed = () => { Math.random = mulberry32(SEED); };
+reseed();
+
 const { DB } = await import('../app/js/data.js');
 const { facetsFor } = await import('../app/js/engine.js');
 const { State, cardState, KNOWN_AT } = await import('../app/js/schedule.js');
@@ -71,6 +93,7 @@ function willGetRight(itemId, facet) {
 
 async function simulate(packId, days, perDay) {
   State.reset();
+  reseed();                            // each scenario starts from the same draw
   const history = [];
   for (let day = 0; day < days; day++) {
     clock = realNow() + day * 24 * 3600e3 + 9 * 3600e3;

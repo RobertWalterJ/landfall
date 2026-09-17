@@ -114,6 +114,22 @@ function go(name, params = {}) {
 
 // ── shared bits ──────────────────────────────────────────────────────────
 const activePacks = () => State.settings().packs.filter((p) => DB.packs.has(p));
+
+// THE CHART TAKES ITS COLOUR FROM THE WATER YOU ARE SAILING.
+//
+// Opening a pack restains the whole app: Caribbean turquoise over coral sand
+// gives way to the North Atlantic's slate over chalk, to Sahelian dust, to the
+// jade and loess of northern China. It is the plainest signal there is that you
+// have moved on, and it is nine sets of custom properties — see
+// build/make-regions.mjs, which derives them, and build/audit-colour.mjs, which
+// refuses any region that makes something unreadable or redefines what a colour
+// MEANS. Right is the same green in Nunavut as in Nevis.
+let REGIONS = null;
+function applyRegion() {
+  const id = REGIONS?.map?.[activePacks()[0]];
+  if (id) document.documentElement.dataset.region = id;
+  else delete document.documentElement.dataset.region;
+}
 const ctxFor = (packIds) => ({
   pool: packIds.flatMap((p) => inPack(p)),
   cruel: false, kinds: null, detail: State.settings().detail,
@@ -222,7 +238,12 @@ screens.home = () => {
       h('span', { class: 'row-text' },
         h('span', { class: 'row-title' }, 'Packs'),
         h('span', { class: 'row-sub' }, packIds.length > 1 ? `${packIds.length} packs · ${ledger.items} places` : `${p.name} · ${ledger.items} places`)),
-      chev()));
+      chev()),
+    // Which build is this, and when was it made. Tap for the rest.
+    h('button', {
+      class: 'version tap small', onclick: () => go('settings'),
+      'aria-label': 'Version and settings',
+    }, 'Landfall ' + BUILD));
 };
 
 // ── setup ────────────────────────────────────────────────────────────────
@@ -253,6 +274,7 @@ screens.setup = () => {
             if (on) chosen.delete(id); else chosen.add(id);
             if (!chosen.size) chosen.add(id);
             State.set({ packs: [...chosen] });
+            applyRegion();          // the sea changes when the pack does
             render();
           },
         },
@@ -1446,8 +1468,11 @@ screens.settings = () => {
     seg('Theme', null, [['system', 'Match the phone'], ['light', 'Chart'], ['dark', 'Night chart']], 'theme', applyTheme),
     h('div', { class: 'sep' }),
     h('div', { class: 'label' }, 'About'),
-    h('p', { class: 'lede', style: 'font-size:.95rem' },
-      `Landfall · build ${BUILD}. Shapes and places from Natural Earth (public domain) and world-countries (ODbL); flags from flag-icons (MIT). Island names, regional groupings and corrections are hand-checked — see build/report.txt for everything the build could not resolve.`),
+    h('p', { class: 'sentence' }, 'Landfall ' + BUILD),
+    h('p', { class: 'lede muted', style: 'font-size:.85rem' },
+      'Version, when it was built, and the change it came from. The app checks for a newer one each time you open it.'),
+    h('p', { class: 'lede', style: 'font-size:.95rem;margin-top:var(--s3)' },
+      ` Shapes and places from Natural Earth (public domain) and world-countries (ODbL); flags from flag-icons (MIT). Island names, regional groupings and corrections are hand-checked — see build/report.txt for everything the build could not resolve.`),
     h('button', {
       class: 'btn quiet tap', style: 'margin-top:var(--s6)',
       onclick: () => {
@@ -1477,6 +1502,8 @@ async function boot() {
 
   await loadCore();
   State.seedConfusions(DB.core.groups);
+  REGIONS = await fetch(new URL('data/regions.json', document.baseURI)).then((r) => r.json()).catch(() => null);
+  applyRegion();
   const packs = activePacks();
   await Promise.all([
     loadFlags().catch(() => null),
@@ -1488,9 +1515,42 @@ async function boot() {
   boot.classList.add('gone');
   setTimeout(() => boot.remove(), 300);
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  watchForUpdates();
+}
+
+// "Do I need to reload?" should never be a question the user has to ask.
+//
+// The worker fetches the shell network-first, so a new build is picked up the
+// next time the app is opened — but a page that is ALREADY open keeps the code
+// it started with. So when a new worker finishes installing behind us, say so
+// and offer the reload, rather than letting someone play a stale build and
+// wonder why the thing I said I fixed is not fixed.
+function watchForUpdates() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const offer = (worker) => {
+      if (!worker || !navigator.serviceWorker.controller) return;   // first install: nothing to offer
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed') showUpdate();
+      });
+      if (worker.state === 'installed') showUpdate();
+    };
+    offer(reg.waiting);
+    reg.addEventListener('updatefound', () => offer(reg.installing));
+    // And look again whenever the app comes back to the foreground, which on a
+    // phone is how it is actually used.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+}
+
+function showUpdate() {
+  if (document.querySelector('.update-bar')) return;
+  document.body.append(h('button', {
+    class: 'update-bar tap',
+    onclick: () => { stopSpeech(); location.reload(); },
+  }, 'A newer version is ready — tap to load it'));
 }
 
 boot();

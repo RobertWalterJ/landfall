@@ -10,7 +10,7 @@
 //   across) and Cuba (320) appear at the same size. The hero is about shape
 //   recognition, not area.
 //
-//   The fill is mastery. Pale outline = never met, brass = met, inked = known.
+//   The fill is mastery. Outline = never met, brass = met, inked = known.
 //   So the hero IS the progress display, which is why the status chips below it
 //   can stay small — and why day 1 (a pale, unsurveyed coast with one mark on
 //   it) is the correct picture of an empty state rather than a sad one.
@@ -104,7 +104,11 @@ export function renderHero(host, { packIds, markId = null, onPick = null, visit 
   pts.forEach((p, i) => {
     const { c } = p;
     const m = mastery(c);
-    const fill = m === 0 ? 'var(--land-unseen)' : m > 0.55 ? 'var(--land-known)' : 'var(--land-shaky)';
+    // A ladder you can read with no colour at all: an island you have never
+    // met is an OUTLINE, one you are working on is filled mid-tone, one you
+    // know is inked solid. Three pale fills differing only in hue was the old
+    // version, and it said nothing to anyone who cannot separate those hues.
+    const fill = m === 0 ? 'none' : m > 0.55 ? 'var(--land-known)' : 'var(--land-shaky)';
     const box = document.createElement(onPick ? 'button' : 'div');
     box.className = 'isle tap small';
     box.style.cssText = `left:${p.x}px; top:${p.y}px; --i:${i}`;
@@ -122,7 +126,7 @@ export function renderHero(host, { packIds, markId = null, onPick = null, visit 
     const p2 = document.createElementNS(svgNS, 'path');
     p2.setAttribute('d', c.d);
     p2.setAttribute('fill', fill);
-    if (m === 0) { p2.setAttribute('stroke', 'var(--sea)'); p2.setAttribute('stroke-opacity', '.28'); p2.setAttribute('stroke-width', '0.9'); p2.setAttribute('vector-effect', 'non-scaling-stroke'); }
+    if (m === 0) { p2.setAttribute('stroke', 'var(--coast-strong)'); p2.setAttribute('stroke-width', '1.1'); p2.setAttribute('vector-effect', 'non-scaling-stroke'); }
     swell.append(p2);
     box.append(swell);
 

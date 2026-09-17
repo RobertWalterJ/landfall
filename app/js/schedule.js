@@ -358,6 +358,8 @@ export class Scheduler {
     this.groupById = groupById;
     this.lapses = [];
     this.held = new Map();            // item|facet -> question number it may return at
+    this.serve = null;                // the last card handed out, so it can be handed back
+    this.unaskable = new Set();       // no question can be built for these today
     this.requeues = new Map();        // item|facet -> times brought back this round
     this.asked = new Set();
     this.n = 0;
@@ -463,7 +465,7 @@ export class Scheduler {
       const first = order[0];
       for (const f of this.facetsFor(it)) {
         const key = it.i + '|' + f;
-        if (this.asked.has(key)) continue;
+        if (this.asked.has(key) || this.unaskable.has(key)) continue;
         // A card waiting out its spacing gap is not a candidate. Without this
         // the requeue frees it from `asked` and the relearning branch serves it
         // on the very next question — the gap is the entire mechanism.
@@ -506,13 +508,16 @@ export class Scheduler {
     // 1. A card missed — or still in its learning steps — from earlier in this
     //    round, once enough has happened in between that it is recall rather
     //    than echo.
-    const lapse = this.lapses.find((l) => l.notBefore <= pos && (l.itemId + '|' + l.facet) !== this.lastKey);
+    const lapse = this.lapses.find((l) => l.notBefore <= pos
+      && (l.itemId + '|' + l.facet) !== this.lastKey
+      && !this.unaskable.has(l.itemId + '|' + l.facet));
     if (lapse) {
       this.lapses = this.lapses.filter((l) => l !== lapse);
       const key = lapse.itemId + '|' + lapse.facet;
       // Put it back in `asked` and clear the hold, or the ordinary path picks
       // it up again on the very next question — which is how the same card
       // ended up asked six times in one round.
+      this.serve = { key, prev: this.lastKey, why: 'relearn', lapse, held: this.held.get(key) };
       this.asked.add(key);
       this.held.delete(key);
       this.served.relearn++;
@@ -555,7 +560,14 @@ export class Scheduler {
       return this.take(due[Math.min(idx, due.length - 1)], 'review');
     }
 
-    if (fresh.length && this.frontierOpen()) return this.take(fresh[0], 'new');
+    // Nothing due, nothing relearning. The frontier exists to keep the pile of
+    // unsettled places inside what a day can actually consolidate — but when
+    // the round has no other work left, the pile is not what is binding, and
+    // one more place beats grinding something already answered. A small overrun
+    // only, so a large pack still cannot flood. (Without this a pack barely
+    // larger than the frontier — Canada is thirteen units against a frontier of
+    // twelve — holds its last unit back behind a settle that may not come.)
+    if (fresh.length && this.learningCount() < FRONTIER_ITEMS + 3) return this.take(fresh[0], 'new');
 
     // 5. Nothing due and nothing new allowed. Practice, which is explicitly
     //    NOT credited to the schedule — see State.answer({ practice: true }).
@@ -563,7 +575,7 @@ export class Scheduler {
     for (const it of this.pool) {
       for (const f of this.facetsFor(it)) {
         const key = it.i + '|' + f;
-        if (this.asked.has(key) || key === this.lastKey) continue;
+        if (this.asked.has(key) || this.unaskable.has(key) || key === this.lastKey) continue;
         if ((this.held.get(key) || 0) > this.n) continue;
         const c = State.card(it.i, f);
         if (c && c.st !== 'new') any.push({ itemId: it.i, facet: f, item: it, iv: c.iv });
@@ -575,11 +587,41 @@ export class Scheduler {
   }
 
   take(card, why) {
-    this.lastKey = card.itemId + '|' + card.facet;
-    this.asked.add(card.itemId + '|' + card.facet);
+    const key = card.itemId + '|' + card.facet;
+    this.serve = { key, prev: this.lastKey, why, lapse: null, held: undefined };
+    this.lastKey = key;
+    this.asked.add(key);
     if (why === 'new') this.served.new++;
     else if (why === 'review') this.served.review++;
     return { ...card, why };
+  }
+
+  // A card whose question could not be built was never actually asked, so give
+  // it back whole.
+  //
+  // Leaving it consumed did two bad things. It burned the card for the round —
+  // and, because the spacing guard keys off the LAST card served, it let the
+  // card asked before it return as the very next question: the caller never saw
+  // the discarded one, so from the player's side the identical question ran
+  // twice in a row. That is the single most obviously broken thing a drill can
+  // do, and it was invisible because the discard happened between two calls.
+  reject(card) {
+    const key = card.itemId + '|' + card.facet;
+    const s = this.serve;
+    if (!s || s.key !== key) return;
+    this.lastKey = s.prev;
+    this.asked.delete(key);
+    this.n--;
+    if (s.why === 'new') this.served.new--;
+    else if (s.why === 'review') this.served.review--;
+    else if (s.why === 'relearn' && s.lapse) this.served.relearn--;
+    // Set aside, not merely released. A card no question can be built for is
+    // unaskable for the rest of the round, and putting it straight back in the
+    // pool just means picking it again on the next pass — twenty-four times,
+    // and then ending the round with material left unasked.
+    this.unaskable.add(key);
+    this.lapses = this.lapses.filter((l) => l !== s.lapse);
+    this.serve = null;
   }
 
   // A miss comes back inside the round, at +3 questions and then +9. Three

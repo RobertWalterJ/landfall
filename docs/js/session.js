@@ -63,11 +63,13 @@ export class Round {
       const card = this.drill ? this.drillCard(tries) : this.sched.next();
       if (!card) break;
       const it = card.item || item(card.itemId);
-      if (!it) continue;
+      if (!it) { this.sched.reject(card); continue; }
       const seenKinds = this.kindsAsked.get(card.itemId + '|' + card.facet);
       const ctx = this.drill ? { ...this.ctx, cruel: true } : this.ctx;
       const q = buildQuestion(it, card.facet, seenKinds ? { ...ctx, avoid: seenKinds } : ctx);
-      if (!q) continue;
+      // No question could be built for this card right now — hand it back to
+      // the scheduler rather than silently spending it. See Scheduler.reject.
+      if (!q) { this.sched.reject(card); continue; }
       q.why = card.why;
       if (!seenKinds) this.kindsAsked.set(card.itemId + '|' + card.facet, new Set([q.kind]));
       else seenKinds.add(q.kind);
