@@ -11,8 +11,8 @@
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stamp as versionStamp } from './lib/stamp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = join(ROOT, 'app');
@@ -22,17 +22,7 @@ const targets = [join(ROOT, 'docs'), join(ROOT, 'dist', 'web')];
 // pushed?" is not a question anyone should have to answer by feel, so the
 // version, the moment it was built and the commit it came from all ship with
 // it and are visible in the app.
-const git = (args) => {
-  try { return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim(); }
-  catch { return ''; }
-};
-const build = Number(git(['rev-list', '--count', 'HEAD']) || 0) + 1;
-const commit = git(['rev-parse', '--short', 'HEAD']) || 'local';
-const now = new Date();
-const when = now.toLocaleString('en-CA', {
-  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
-});
-const stamp = `1.${build} · ${when} · ${commit}`;
+const { text: stamp, build } = versionStamp(ROOT);
 const problems = [];
 
 function walk(dir, out = []) {

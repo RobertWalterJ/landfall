@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { Script } from 'node:vm';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stamp as versionStamp } from './lib/stamp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = join(ROOT, 'app');
@@ -117,7 +118,7 @@ for (const m of CORE_MAPS) {
   catch { console.warn('  (no map ' + m + ')'); }
 }
 
-const html = read('index.html')
+let html = read('index.html')
   .replace(/<link rel="manifest"[^>]*>\s*/, '')
   .replace(/<link rel="stylesheet" href="fonts\/fonts.css">\s*/, '')
   .replace(/<link rel="stylesheet" href="styles.css">/, '<style>\n' + fontCss + '\n' + read('styles.css') + '\n</style>')
@@ -127,8 +128,15 @@ const html = read('index.html')
     '<script>window.__LANDFALL__ = ' + JSON.stringify(preload) + ';</script>\n'
     + '<script type="module">\n' + js + '\n</script>');
 
+// The Artifact is the copy that actually lives on his phone, so it gets the
+// same version string as the Pages build. It said "dev (unstamped)", which is
+// the one thing a version line must never say.
+const { text: stamp } = versionStamp(ROOT);
+html = html.replace("'dev (unstamped)'", JSON.stringify(stamp));
+
 mkdirSync(join(ROOT, 'dist'), { recursive: true });
 const out = join(ROOT, 'dist', 'landfall.html');
 writeFileSync(out, html);
+console.log('stamp', stamp);
 console.log('wrote dist/landfall.html —', (html.length / 1024 / 1024).toFixed(2) + 'MB');
 if (html.length > 15.5 * 1024 * 1024) console.error('  ! over the 16MB artifact limit');
