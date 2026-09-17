@@ -19,9 +19,8 @@
 //   underneath. Never a half mark, never a red mark for orthography.
 
 import { DB, item, inPack, withArticle } from './data.js';
-import { State, cardState } from './schedule.js';
+import { State, cardState, DAY } from './schedule.js';
 
-const DAY = 24 * 3600e3;
 export const READY_AT = 0.7;          // share of a set that must be met
 export const GAP_2 = 7 * DAY;         // second clean sweep, at least a week on
 export const GAP_3 = 30 * DAY;        // third, at least a month after that

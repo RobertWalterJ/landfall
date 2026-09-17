@@ -54,7 +54,7 @@ export const FACET_LABEL = {
 };
 
 const now = () => Date.now();
-const DAY = 24 * 3600e3;
+export const DAY = 24 * 3600e3;
 const dayKey = (t = now()) => new Date(t).toISOString().slice(0, 10);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 

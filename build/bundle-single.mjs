@@ -11,6 +11,7 @@
 // for; the packs that ship here are the ones the app opens on.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { Script } from 'node:vm';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -71,6 +72,39 @@ for (const m of MODULES) {
     aliased.add(a.to);
     js += `const ${a.to} = ${a.from};\n`;
   }
+}
+
+// ── does the thing we just built actually parse? ─────────────────────────
+//
+// THIS CHECK EXISTS BECAUSE THE BUNDLE HAS SHIPPED BROKEN THREE TIMES, and
+// every time it looked identical from the outside: a blank page frozen on the
+// boot screen, with the real error buried in an unhandled rejection nobody was
+// watching. Flattening ES modules into one scope is exactly the operation that
+// turns harmless per-file code into a collision.
+//
+// First the specific failure, named clearly: two modules declaring the same
+// top-level binding. `const DAY` in schedule.js and sweep.js is legal in
+// modules and a SyntaxError once concatenated — which takes the whole script
+// out, so nothing runs at all.
+const declared = new Map();
+const DECL = /^(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+(\w+)/gm;
+for (const m of MODULES) {
+  for (const [, name] of read('js/' + m).matchAll(DECL)) {
+    if (declared.has(name) && declared.get(name) !== m) {
+      throw new Error(`"${name}" is declared at the top level of both ${declared.get(name)} and ${m}. `
+        + 'That is fine in modules and fatal once they are flattened into one script: '
+        + 'export it from one and import it in the other, or rename it.');
+    }
+    declared.set(name, m);
+  }
+}
+
+// Then the backstop: compile the assembled script without running it. This
+// catches anything the check above does not think of.
+try {
+  new Script(js, { filename: 'landfall-bundle.js' });
+} catch (err) {
+  throw new Error('the bundled script does not parse — ' + err.message);
 }
 
 // ── corpus ───────────────────────────────────────────────────────────────

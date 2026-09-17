@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "2026-09-16 16:35";
+const BUILD = "2026-09-17 14:23";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
