@@ -574,6 +574,25 @@ function locatorFor(id) {
   return well;
 }
 
+// "You were 92 km out — Anguilla lies north-west of it."
+//
+// Rounded the way distance is actually spoken: a bare 4 km reads as precision
+// nobody has, and 1,247 km reads as arithmetic. The band words carry the
+// meaning for a reader who does not want to convert a number in their head.
+function missSentence(km, dir, hitName) {
+  const d = km < 10 ? Math.round(km) : km < 100 ? Math.round(km / 5) * 5
+    : km < 1000 ? Math.round(km / 10) * 10 : Math.round(km / 100) * 100;
+  const how = km < 25 ? 'Just next door'
+    : km < 120 ? 'Close'
+    : km < 400 ? 'The right neighbourhood'
+    : km < 1200 ? 'A long way off'
+    : 'The wrong end of the chart';
+  const where = hitName ? `you tapped ${hitName}` : 'that is where you tapped';
+  return dir
+    ? `${how} — ${where}, about ${d.toLocaleString()} km away. What you wanted lies ${dir} of it.`
+    : `${how} — ${where}, about ${d.toLocaleString()} km away.`;
+}
+
 function figureFor(fig) {
   if (fig.type === 'flag') {
     const box = h('div', { class: 'figure flag' });
@@ -708,6 +727,12 @@ function showVerdict(v, q) {
 
   const body = h('div', { class: 'sheet-body' });
   const lines = [];
+  // HOW FAR OUT. On a map, "wrong" is a distance, not a verdict — the island
+  // next door and the wrong end of the Caribbean are different mistakes and
+  // only one of them means you do not know where the place is. Said the way a
+  // chart would say it: kilometres and a bearing, so it is a correction rather
+  // than a scolding.
+  if (v.missKm != null) lines.push(missSentence(v.missKm, v.missDir, item(v.chosen)?.n));
   if (v.explain) lines.push(v.explain);
   if (v.note) lines.push(v.note);
   for (const l of teachLines(target)) if (!lines.includes(l)) lines.push(l);
@@ -842,6 +867,25 @@ screens.summary = () => {
         h('p', { class: 'sentence', style: 'margin-top:var(--s5)' }, head),
         h('p', { class: 'lede', style: 'font-size:.95rem' }, sub),
       ];
+    })(),
+    // HOW CLOSE, not just how many. On the map, a round where every miss was
+    // the next island along is a different round from one where they were
+    // scattered — and this number keeps falling long after right-or-wrong has
+    // levelled off, so it is the one that shows you are still getting better.
+    ...(() => {
+      if (!s.mapMisses?.length) return [];
+      const mean = s.mapMisses.reduce((a, b) => a + b, 0) / s.mapMisses.length;
+      const best = Math.min(...s.mapMisses);
+      const d = (k) => (k < 10 ? Math.round(k) : k < 100 ? Math.round(k / 5) * 5 : Math.round(k / 10) * 10);
+      const prior = State.priorMissKm();
+      const trend = prior && Math.abs(prior - mean) / prior > 0.12
+        ? (mean < prior ? ` Closer than your usual ${d(prior).toLocaleString()} km.`
+                        : ` Wider than your usual ${d(prior).toLocaleString()} km.`)
+        : '';
+      return [h('p', { class: 'lede', style: 'font-size:.95rem;margin-top:var(--s3)' },
+        s.mapMisses.length === 1
+          ? `Your one map miss was about ${d(best).toLocaleString()} km out.${trend}`
+          : `Your ${s.mapMisses.length} map misses averaged about ${d(mean).toLocaleString()} km out, the closest ${d(best).toLocaleString()} km.${trend}`)];
     })(),
     seen.size ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'What slipped'), missed) : null,

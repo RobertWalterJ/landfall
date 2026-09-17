@@ -5,7 +5,7 @@
 // the DOM so the same object drives Quick Play, Training and a confusion
 // drill, and so it can be exercised headlessly.
 
-import { DB, inPack, loadMap, loadFlags, item } from './data.js';
+import { DB, inPack, loadMap, loadFlags, item, distanceKm, bearingFrom } from './data.js';
 import { buildQuestion, facetsFor, KINDS, nearMisses } from './engine.js';
 import { State, Scheduler } from './schedule.js';
 
@@ -101,10 +101,22 @@ export class Round {
     // distractor set or a free-recall answer is worth more than a standard
     // four-option one. The app built the question, so it knows.
     const bonus = right ? (q.recall ? 0.25 : q.cruel || this.ctx.cruel ? 0.15 : 0) : 0;
+
+    // HOW FAR OUT WERE YOU. On a map question a wrong answer is not one thing:
+    // tapping the island next door and tapping the wrong end of the Caribbean
+    // are different mistakes, and only one of them means you do not know where
+    // the place is. The distance is the honest measure of a map error, and —
+    // unlike right-or-wrong — it keeps improving long after accuracy flattens,
+    // which makes it the one number that can show progress month to month.
+    const target = item(q.correctId);
+    const hit = !right && choiceId && choiceId !== q.correctId ? item(choiceId) : null;
+    const missKm = q.form === 'map' && hit ? distanceKm(hit, target) : null;
+    const missDir = missKm != null ? bearingFrom(hit, target) : null;
+
     const card = State.answer(
       q.itemId, q.facet, right,
       right ? null : (choiceId && choiceId !== q.correctId ? choiceId : null),
-      { bonus, practice: q.why === 'practice' },
+      { bonus, practice: q.why === 'practice', missKm },
     );
     if (right) {
       this.streak++;
@@ -116,7 +128,7 @@ export class Round {
       this.streak = 0;
       this.sched.missed(q.itemId, q.facet);
     }
-    this.results.push({ q, choiceId, right });
+    this.results.push({ q, choiceId, right, missKm });
     if (this.drill && right) this.drillHits = (this.drillHits || 0) + 1;
     if (this.drill && !right) this.drillHits = 0;
     return {
@@ -126,6 +138,7 @@ export class Round {
       label: q.answerLabel,
       explain: q.explain || null,
       note: item(q.correctId)?.note || item(q.itemId)?.note || null,
+      missKm, missDir,
     };
   }
 
@@ -140,6 +153,7 @@ export class Round {
       bestStreak: this.bestStreak,
       seconds: Math.round((Date.now() - this.startedAt) / 1000),
       newItems: this.asked.filter((q) => q.why === 'new').length,
+      mapMisses: this.results.filter((r) => r.missKm != null).map((r) => r.missKm),
     };
   }
 }

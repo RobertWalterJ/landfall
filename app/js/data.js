@@ -92,6 +92,24 @@ export function kindLabel(it) {
 
 export const parentOf = (it) => (it.pr ? DB.items.get(it.pr) : null);
 
+// Which way the second place lies from the first, in plain words.
+//
+// A distance on its own ("92 km out") tells you that you were wrong but not
+// how to be right. "92 km north-west" is a correction you can act on, and it
+// is how anyone reading a chart would actually say it.
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+export function bearingFrom(a, b) {
+  if (!a?.ll || !b?.ll) return null;
+  const rad = Math.PI / 180;
+  const [la1, lo1] = a.ll, [la2, lo2] = b.ll;
+  const dLon = (lo2 - lo1) * rad;
+  const y = Math.sin(dLon) * Math.cos(la2 * rad);
+  const x = Math.cos(la1 * rad) * Math.sin(la2 * rad)
+    - Math.sin(la1 * rad) * Math.cos(la2 * rad) * Math.cos(dLon);
+  const deg = (Math.atan2(y, x) / rad + 360) % 360;
+  return COMPASS[Math.round(deg / 45) % 8];
+}
+
 // Great-circle distance in km, used to rank how near a wrong answer is.
 export function distanceKm(a, b) {
   if (!a?.ll || !b?.ll) return null;

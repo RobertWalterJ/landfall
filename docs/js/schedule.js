@@ -218,7 +218,7 @@ export const State = {
   // ── grading ────────────────────────────────────────────────────────────
   // `bonus` is the ease adjustment the QUESTION earned: cruel distractors or a
   // free-recall answer are worth more than a standard four-option one.
-  answer(itemId, facet, right, wrongChoiceId, { bonus = 0, practice = false } = {}) {
+  answer(itemId, facet, right, wrongChoiceId, { bonus = 0, practice = false, missKm = null } = {}) {
     const k = itemId + '|' + facet;
     const c = this.data.cards[k] || newCard();
     c.last = now();
@@ -230,7 +230,7 @@ export const State = {
       // schedule and counting it as a successful spaced retrieval is how a
       // scheduler quietly destroys its own spacing.
       this.data.cards[k] = c;
-      this.recordAnswer(right, itemId, wrongChoiceId);
+      this.recordAnswer(right, itemId, wrongChoiceId, missKm);
       return c;
     }
 
@@ -262,16 +262,68 @@ export const State = {
       c.due = now();
     }
     this.data.cards[k] = c;
-    this.recordAnswer(right, itemId, wrongChoiceId);
+    this.recordAnswer(right, itemId, wrongChoiceId, missKm);
     return c;
   },
 
-  recordAnswer(right, itemId, wrongChoiceId) {
+  // WHAT HAPPENED TODAY, not just how much of it.
+  //
+  // This used to store a bare count of answers per day, which meant the app
+  // could say "practised 43 of the last 50 days" and could NEVER say whether
+  // any of it was working — the accuracy was thrown away as it arrived, and
+  // no amount of later cleverness can reconstruct it. Old saves hold a number;
+  // they are migrated in place on the next answer and simply start from there.
+  //
+  // `miss` is the total kilometres of map error and `missN` the count, so the
+  // mean is a number that keeps falling long after right-or-wrong has
+  // flattened out. It is the most sensitive progress signal the app has.
+  recordAnswer(right, itemId, wrongChoiceId, missKm = null) {
     if (!right && wrongChoiceId && wrongChoiceId !== itemId) this.confuse(itemId, wrongChoiceId);
     this.data.stats.answered++;
     if (right) this.data.stats.right++;
-    this.data.days[dayKey()] = (this.data.days[dayKey()] || 0) + 1;
+    const key = dayKey();
+    const prev = this.data.days[key];
+    const day = (prev && typeof prev === 'object')
+      ? prev
+      : { n: typeof prev === 'number' ? prev : 0, right: 0 };
+    day.n++;
+    if (right) day.right++;
+    if (missKm != null && Number.isFinite(missKm)) {
+      day.missN = (day.missN || 0) + 1;
+      day.miss = Math.round((day.miss || 0) + missKm);
+    }
+    this.data.days[key] = day;
     this.save();
+  },
+
+  // Your typical map error before today, so a round can say whether it was
+  // closer than usual. Excludes today, or the comparison would include itself.
+  priorMissKm(window = 30) {
+    let km = 0, n = 0;
+    for (let i = 1; i < window; i++) {
+      const d = this.data.days[dayKey(now() - i * DAY)];
+      if (d && typeof d === 'object' && d.missN) { km += d.miss; n += d.missN; }
+    }
+    return n >= 4 ? km / n : null;      // too few to be a "usual" anything
+  },
+
+  // The last `window` days that were actually played, newest last. The shape
+  // is what a chart needs and what "am I getting better?" needs.
+  trend(window = 60) {
+    const out = [];
+    for (let i = window - 1; i >= 0; i--) {
+      const d = this.data.days[dayKey(now() - i * DAY)];
+      if (!d) continue;
+      const day = typeof d === 'object' ? d : { n: d, right: 0 };
+      out.push({
+        daysAgo: i,
+        n: day.n || 0,
+        right: day.right || 0,
+        pct: day.n ? (day.right || 0) / day.n : null,
+        missKm: day.missN ? day.miss / day.missN : null,
+      });
+    }
+    return out;
   },
 
   // ── confusions ─────────────────────────────────────────────────────────
