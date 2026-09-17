@@ -32,6 +32,7 @@ node build/test-engine.mjs                        # 20k questions, every invaria
 node build/test-round.mjs                         # eight simulated weeks of play (seeded)
 node build/test-sweep.mjs                         # Label the Map name matching
 node build/audit-colour.mjs                       # no meaning may ride on hue alone
+node build/serve-lab.mjs                          # audition + measure every sound cue
 node build/make-deploy.mjs                        # docs/ for Pages + dist/web
 node build/bundle-single.mjs                      # dist/landfall.html, one file
 ```
@@ -59,6 +60,34 @@ right and hollow for wrong, the map draws a solid keyline round the answer and a
 dashed one round the place you actually hit, and an island you have never met is
 an outline rather than a pale fill. With those in place the colour can be
 whatever suits the sea.
+
+## Sound
+
+Eleven cues, all synthesised at runtime — no sample files, nothing to download,
+nothing to cache, works offline, adds nothing to the bundle. It is a chart
+table: a pencil tick on wood, paper moving, a struck brass bar, a small bell,
+and one shared room they are all sent to. Nothing beeps.
+
+`build/sound-lab.html` (served by `node build/serve-lab.mjs`) auditions each
+cue and **measures** it, rendering the shipping module through an
+`OfflineAudioContext` and reporting four numbers, each of which has an actual
+wrong answer: peak level, length, the share of energy below **400 Hz** — the
+band a phone speaker throws away — and the share above 5 kHz, where a small
+speaker turns harsh. Every cue is judged on the worst of five renders, because
+they are built from noise and a few cents of random detune and a single render
+can pass by luck.
+
+That measurement is not decoration. The cue it was written to catch was already
+in the app: `wrong` was a **sine at 196 Hz and 147 Hz**, and a sine has no
+harmonics, so there was nothing above the rolloff to hear and the sound was
+close to silent on the device it was written for. It then caught two more of
+exactly the same mistake in the replacement, in `ink` and `given`, within
+minutes of being written.
+
+Sound is off by default and the levels are deliberately spread over about
+30 dB — `aim` is nearly subliminal and fires constantly, `held` is an event and
+fires a few times a year. If every cue sat at one loudness the set would be
+noise rather than information.
 
 `build/make-regions.mjs` generates nine regional palettes from a hue and a
 chroma each, copying every lightness from the audited default so the contrast

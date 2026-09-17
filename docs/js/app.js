@@ -21,13 +21,13 @@ import { DB, loadCore, loadMap, loadFlags, item, pack, inPack, kindLabel, withAr
 import { State, cardState, cardScore, isLapsing, FACET_LABEL, FACET_ORDER, KNOWN_AT } from './schedule.js';
 import { facetsFor } from './engine.js';
 import { Round } from './session.js';
-import { MapView } from './map.js';
+import { MapView, onAiming } from './map.js';
 import { renderHero } from './hero.js';
 import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable } from './sweep.js';
-import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable } from './speech.js';
+import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "1.11 · Sep 17, 2026, 15:07 · a1c261b";
+const BUILD = "1.12 · Sep 17, 2026, 16:37 · edb6d57";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -357,6 +357,9 @@ function renderQuestion(wrap) {
   const q = round.next();
   if (!q) { go('summary'); return; }
   manualFromHere = false;
+  // Sighting new land. Only for a place never asked about before, so the motif
+  // stays rare enough to mean something.
+  if (q.why === 'new') sound.discover();
 
   const top = h('div', { class: 'round-top' },
     h('button', { class: 'icon-btn tap small', 'aria-label': 'Leave the round', onclick: leaveRound, html: ICON.back }),
@@ -653,6 +656,7 @@ function answer(choiceId) {
   stopClock();
   const verdict = round.answer(choiceId);
   if (verdict.right) sound.right(); else sound.wrong();
+  setTimeout(() => sound.reveal(verdict.right), 190);   // the sheet, a beat later
 
   // Show what you picked AND what was right, both at once.
   for (const el of document.querySelectorAll('[data-opt]')) {
@@ -784,6 +788,7 @@ function showVerdict(v, q) {
 }
 
 function next() {
+  sound.advance();
   clearSheet();
   if (round.done) { go('summary'); return; }
   const wrap = document.querySelector('.round');
@@ -1084,6 +1089,7 @@ screens.sweep = ({ key, dir }) => {
 
   function right(it, spelling) {
     sound.right();
+    sound.ink();
     const missedBefore = sweep.missed.has(it.i);
     if (!missedBefore) { sweep.firstTime++; State.answer(it.i, 'place', true, null, { bonus: dir === 'name' ? 0.25 : 0.15 }); }
     else { sweep.afterMiss++; State.answer(it.i, 'place', true, null, { bonus: dir === 'name' ? 0.25 : 0.15 }); }
@@ -1114,6 +1120,7 @@ screens.sweep = ({ key, dir }) => {
       State.answer(want.i, 'place', false, null);
       sweep.failed.push(want.n);
     }
+    sound.given();
     sweep.given.push(want.i);
     sweep.named.set(want.i, 'given');
     sweep.i++;
@@ -1158,7 +1165,8 @@ screens.sweep = ({ key, dir }) => {
       cleanSweep: clean, named: sweep.firstTime, total: sweep.order.length,
       failed: [...new Set(sweep.failed)],
     });
-    if (clean) sound.fanfare();
+    if (res.now.held && !res.was.held) sound.held();
+    else if (clean) sound.fanfare();
     paint();
     bar.replaceChildren();
 
@@ -1499,6 +1507,19 @@ async function boot() {
   // Speech and audio both need one real gesture before they will work at all.
   const prime = () => { unlock(); sound.primeSound(); document.removeEventListener('pointerdown', prime); };
   document.addEventListener('pointerdown', prime);
+
+  // Read-aloud is an accessibility feature here, not a garnish, so the effects
+  // duck out of its way rather than talking over it.
+  onSpeaking(sound.setSpeaking);
+  onAiming(sound.aim);
+
+  // ONE TICK PER TAP, wired once rather than at four dozen call sites. The map
+  // is excluded because it has its own, quieter cue for the feature under your
+  // thumb — two sounds for one gesture is a rattle.
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target?.closest?.('.map, .mapwell')) return;
+    if (e.target?.closest?.('button, .tap, [role="button"]')) sound.press();
+  }, { capture: true, passive: true });
 
   await loadCore();
   State.seedConfusions(DB.core.groups);

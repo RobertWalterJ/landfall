@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Landfall — sound lab</title>
+<!--
+  Audition and MEASURE every cue. Build tool, never shipped: it lives in build/
+  because everything in app/ is copied into docs/.
+
+    node build/serve-lab.mjs   →  http://localhost:8798/build/sound-lab.html
+
+  It drives app/js/sound.js through its __render hook, so what is measured here
+  is the code that actually ships rather than a copy of it. Four numbers per
+  cue, and each one answers a question that has an actual wrong answer:
+
+    peak      is it going to clip, or be inaudible?
+    length    is it short enough to fire four hundred times an hour?
+    < 400 Hz  the share of energy a PHONE SPEAKER THROWS AWAY. This is the
+              number that caught the old "wrong" cue, which put both of its
+              notes below the rolloff as pure sines and was therefore close to
+              silent on the device it was written for.
+    > 5 kHz   the share in the band that turns harsh on a small speaker.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 24px; max-width: 860px; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  p.lede { margin: 0 0 20px; opacity: .7; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 7px 10px; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; opacity: .6; }
+  tbody tr:nth-child(odd) { background: color-mix(in srgb, currentColor 6%, transparent); }
+  button { font: inherit; padding: 5px 14px; border-radius: 999px; border: 0;
+    background: #0D6A7C; color: #fff; cursor: pointer; }
+  .bad { color: #C23B22; font-weight: 700; }
+  .warn { color: #8A5D10; font-weight: 600; }
+  #all { margin-bottom: 16px; }
+  footer { margin-top: 20px; opacity: .65; font-size: .875rem; }
+</style>
+</head>
+<body>
+<h1>Landfall — sound lab</h1>
+<p class="lede">Tap a cue to hear it. Numbers are the worst of five offline renders of the shipping module.</p>
+<button id="all">Play them all in order</button>
+<table>
+  <thead><tr>
+    <th>cue</th><th>peak</th><th>rms</th><th>length</th><th>&lt; 400 Hz</th><th>&gt; 5 kHz</th><th></th>
+  </tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<footer id="verdict"></footer>
+
+<script type="module">
+import * as sound from '../app/js/sound.js';
+
+const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+const dB = (x) => (x <= 1e-7 ? -Infinity : 20 * Math.log10(x));
+const fmt = (x) => (x === -Infinity ? '−∞' : x.toFixed(1) + ' dB');
+
+// Radix-2 FFT, iterative. Enough to split the spectrum into the two bands that
+// matter here; no need for a library.
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ar = re[i + k], ai = im[i + k];
+        const br = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
+        const bi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+        re[i + k] = ar + br; im[i + k] = ai + bi;
+        re[i + k + len / 2] = ar - br; im[i + k + len / 2] = ai - bi;
+        const ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr; cr = ncr;
+      }
+    }
+  }
+}
+
+function analyse(buf) {
+  const a = buf.getChannelData(0), b = buf.numberOfChannels > 1 ? buf.getChannelData(1) : a;
+  const n = a.length;
+  const mono = new Float32Array(n);
+  let peak = 0, sum = 0, lastLoud = 0;
+  for (let i = 0; i < n; i++) {
+    const v = (a[i] + b[i]) / 2;
+    mono[i] = v;
+    const m = Math.abs(v);
+    if (m > peak) peak = m;
+    sum += v * v;
+    if (m > 10 ** (-60 / 20)) lastLoud = i;          // length = down to −60 dBFS
+  }
+  const rms = Math.sqrt(sum / n);
+
+  // Spectrum over the loud part, zero-padded to a power of two.
+  let size = 1;
+  while (size < Math.min(lastLoud + 1, 1 << 16)) size <<= 1;
+  size = Math.max(size, 1024);
+  const re = new Float32Array(size), im = new Float32Array(size);
+  for (let i = 0; i < size && i < n; i++) {
+    re[i] = mono[i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / size));   // Hann
+  }
+  fft(re, im);
+  const binHz = buf.sampleRate / size;
+  let total = 0, low = 0, high = 0;
+  for (let k = 1; k < size / 2; k++) {
+    const p = re[k] * re[k] + im[k] * im[k];
+    const hz = k * binHz;
+    total += p;
+    if (hz < 400) low += p;
+    if (hz > 5000) high += p;
+  }
+  return {
+    peak: dB(peak),
+    rms: dB(rms),
+    seconds: lastLoud / buf.sampleRate,
+    low: total ? low / total : 0,
+    high: total ? high / total : 0,
+  };
+}
+
+const rows = document.getElementById('rows');
+const problems = [];
+
+// Every cue is rendered several times and judged on its WORST result. These
+// are built from noise and from a few cents of random detune, so a single
+// render can pass by luck — `aim` sat exactly on the audibility threshold and
+// alternated between pass and fail on consecutive loads. A measurement that
+// flips is not a measurement.
+const RUNS = 5;
+for (const name of sound.CUES) {
+  let m = null;
+  for (let i = 0; i < RUNS; i++) {
+    const r = analyse(await sound.__render(name, OfflineCtx));
+    m = m ? {
+      peak: Math.min(m.peak, r.peak),          // quietest it ever comes out
+      rms: Math.min(m.rms, r.rms),
+      seconds: Math.max(m.seconds, r.seconds),
+      low: Math.max(m.low, r.low),
+      high: Math.max(m.high, r.high),
+    } : r;
+  }
+
+  // The thresholds. A cue that fails one of these is not a matter of taste.
+  const bad = [];
+  if (m.peak > -1) bad.push('clips');
+  if (m.peak < -46) bad.push('inaudible');
+  if (m.low > 0.35) bad.push('mostly below what a phone speaker reproduces');
+  if (m.high > 0.30) bad.push('harsh on a small speaker');
+  if (m.seconds > 2.6) bad.push('too long to fire repeatedly');
+  if (bad.length) problems.push(`${name}: ${bad.join(', ')}`);
+
+  const cls = (v, warn, fail) => (v > fail ? 'bad' : v > warn ? 'warn' : '');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${name}</td>
+    <td class="${m.peak > -1 ? 'bad' : ''}">${fmt(m.peak)}</td>
+    <td>${fmt(m.rms)}</td>
+    <td class="${cls(m.seconds, 1.8, 2.6)}">${m.seconds.toFixed(2)} s</td>
+    <td class="${cls(m.low, 0.22, 0.35)}">${(m.low * 100).toFixed(0)}%</td>
+    <td class="${cls(m.high, 0.2, 0.3)}">${(m.high * 100).toFixed(0)}%</td>
+    <td><button data-cue="${name}">play</button></td>`;
+  rows.append(tr);
+}
+
+sound.setSound(true);
+rows.addEventListener('click', (e) => {
+  const c = e.target.dataset?.cue;
+  if (c) { sound.primeSound(); sound[c](); }
+});
+document.getElementById('all').addEventListener('click', async () => {
+  sound.primeSound();
+  sound.setSound(true);
+  sound.resetStreak();
+  for (const c of sound.CUES) {
+    sound[c]();
+    await new Promise((r) => setTimeout(r, 850));
+  }
+});
+
+const v = document.getElementById('verdict');
+v.textContent = problems.length
+  ? 'PROBLEMS — ' + problems.join(' · ')
+  : `All ${sound.CUES.length} cues within range: nothing clips, nothing is inaudible, nothing hides below the speaker rolloff, nothing is harsh, nothing outstays its welcome.`;
+v.className = problems.length ? 'bad' : '';
+console.log(problems.length ? problems : 'sound lab: all cues pass');
+</script>
+</body>
+</html>

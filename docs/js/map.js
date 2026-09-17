@@ -13,6 +13,12 @@
 // what makes "where is Bequia" a real question rather than a stab.
 
 const NS = 'http://www.w3.org/2000/svg';
+
+// Who to tell when the feature under a moving thumb changes. A hook rather
+// than an import of sound.js, for the reason given in speech.js: two modules
+// declaring the same top-level binding is what the single-file bundler refuses.
+let onAim = null;
+export function onAiming(fn) { onAim = fn; }
 const el = (name, attrs = {}) => {
   const n = document.createElementNS(NS, name);
   for (const [k, v] of Object.entries(attrs)) if (v != null) n.setAttribute(k, v);
@@ -316,6 +322,7 @@ export class MapView {
     const show = (id) => {
       if (id === this.pending) return;
       this.pending = id;
+      if (id) onAim?.();          // a tick as the aim lands on something new
       for (const n of this.gPin.querySelectorAll('circle.aim')) n.remove();
       for (const n of this.gBase.querySelectorAll('.aiming')) n.classList.remove('aiming');
       if (!id) return;

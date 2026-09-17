@@ -7,6 +7,12 @@
 
 let voice = null;
 let unlocked = false;
+// Who to tell when speaking starts and stops. A callback rather than an import
+// of sound.js: the single-file bundler refuses two modules that both declare
+// the same top-level binding, and `import * as sound` in two places is exactly
+// that. It has frozen the boot screen three times; not a fourth.
+let onState = null;
+export function onSpeaking(fn) { onState = fn; }
 
 function choose() {
   const all = speechSynthesis.getVoices?.() || [];
@@ -49,10 +55,14 @@ export function say(text, { rate = 0.97 } = {}) {
     if (!voice) voice = choose();
     if (voice) { u.voice = voice; u.lang = voice.lang; }
     u.rate = rate;
+    u.onstart = () => onState?.(true);
+    u.onend = () => onState?.(false);
+    u.onerror = () => onState?.(false);
     speechSynthesis.speak(u);
   } catch { /* nothing to do */ }
 }
 
 export function stop() {
   try { speechSynthesis.cancel(); } catch { /* nothing to do */ }
+  onState?.(false);
 }
