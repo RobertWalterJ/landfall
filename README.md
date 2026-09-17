@@ -26,14 +26,45 @@ Launch Landfall.bat          →  http://localhost:8796
 node build/fetch-fonts.mjs                        # once — self-hosts Literata + Archivo
 node --max-old-space-size=6144 build/build.mjs    # corpus + every map   (~40s)
 python build/make-icons.py                        # icons, drawn from the real Hispaniola
+node build/make-regions.mjs                       # app/regions.css, nine regional palettes
+node build/check-syntax.mjs                       # every module parses AS A MODULE
 node build/test-engine.mjs                        # 20k questions, every invariant
-node build/test-round.mjs                         # eight simulated weeks of play
+node build/test-round.mjs                         # eight simulated weeks of play (seeded)
+node build/test-sweep.mjs                         # Label the Map name matching
+node build/audit-colour.mjs                       # no meaning may ride on hue alone
 node build/make-deploy.mjs                        # docs/ for Pages + dist/web
 node build/bundle-single.mjs                      # dist/landfall.html, one file
 ```
 
 `build/report.txt` lists everything the build could not resolve. It is meant to
 be read.
+
+## Colour
+
+`build/audit-colour.mjs` is the one to know about. It reads the tokens out of
+`app/styles.css` and `app/regions.css` and asks a single question of every pair
+of colours the app needs you to tell apart: **if you take the hue away, is the
+distinction still there?**
+
+It answers with CIEDE2000, WCAG contrast, and the Machado et al. (2009)
+dichromacy model, run through deuteranopia, protanopia, tritanopia and plain
+greyscale. A pair may be separated by lightness (3:1, which survives any colour
+vision at all), or by a fill, an outline or a glyph — but if it claims the
+second, there is a matching check proving that cue is itself visible. 460
+checks across 20 palettes, and the build fails on any one of them.
+
+It is not a rule about which colours are allowed. The Caribbean palette is as
+saturated as it ever was; what changed is that the round dots are now solid for
+right and hollow for wrong, the map draws a solid keyline round the answer and a
+dashed one round the place you actually hit, and an island you have never met is
+an outline rather than a pale fill. With those in place the colour can be
+whatever suits the sea.
+
+`build/make-regions.mjs` generates nine regional palettes from a hue and a
+chroma each, copying every lightness from the audited default so the contrast
+relationships hold by construction. Opening a pack restains the app. A region
+changes the world and never the meaning — right is the same green in Nunavut as
+in Nevis — and the audit refuses any region that tries otherwise.
 
 ## Where the facts come from
 
