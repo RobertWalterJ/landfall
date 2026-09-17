@@ -338,6 +338,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   transition: background var(--t-state) var(--e-out), transform var(--t-press) var(--e-out);
 }
 .option-label { flex: 1; font: 500 1.125rem/1.35 var(--font-use); color: var(--ink-2); }
+.option .thumb { width: 34px; height: 26px; border-radius: 6px; }
+.sheet-head .thumb { width: 44px; height: 33px; border-radius: 7px; flex: none; }
 .option-label.long { font-size: 1rem; line-height: 1.3; }
 .option .say { width: 40px; height: 40px; background: transparent; color: var(--ink-3); opacity: .55; }
 .option.right { background: var(--wash-right); }
@@ -416,6 +418,16 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .map .pos { fill: none; stroke: var(--sea); stroke-width: 2.2px; stroke-dasharray: 4 3; opacity: .95;
   vector-effect: non-scaling-stroke; }
 .map .hit { fill: transparent; }
+
+/* Press, see what lights up, slide to correct, release to commit. The aiming
+   ring and the lifted fill are the whole point: they tell you what you are
+   about to answer BEFORE you let go, which is what makes a one-millimetre
+   island selectable with a thumb. */
+.map .feat.aiming { fill: var(--sea); stroke: none; }
+.map circle.aim {
+  fill: none; stroke: var(--sea); opacity: .9;
+  vector-effect: non-scaling-stroke; pointer-events: none;
+}
 /* Size and halo width are set per draw in map.js, computed back through the
    zoom — a font-size in SVG user units shrinks with the viewBox. */
 .map text.mlabel {

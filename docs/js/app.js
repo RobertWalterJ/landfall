@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "2026-09-17 14:23";
+const BUILD = "2026-09-17 17:44";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -88,6 +88,8 @@ const ring = (pct, cls = '') => {
 const chev = () => h('span', { class: 'chev', html: ICON.chev.replace('<svg', '<svg width="16" height="16"') });
 
 function speakBtn(text, { klass = 'say tap small' } = {}) {
+  // 'manual' is the default: the buttons are everywhere, and nothing speaks
+  // until you ask it to. Only 'off' takes the buttons away.
   if (State.settings().speech === 'off' || !speechAvailable()) return null;
   return h('button', {
     class: klass, 'aria-label': 'Read aloud', type: 'button',
@@ -404,6 +406,52 @@ function startClock(q) {
   }, 200);
 }
 
+// A place's own outline, small enough to sit in a list row. For the islands
+// that have no flag of their own, the shape IS the identifier.
+// The first map this place appears on that is actually in memory. Reaching for
+// `it.m[0]` blindly asks for the world map, which is not loaded unless a world
+// pack is active — so every country's outline silently went missing from the
+// Atlas while its flag showed fine.
+function loadedMapFor(it) {
+  const on = it.m || [];
+  return on.find((m) => DB.maps.has(m)) || null;
+}
+
+function shapeChip(it) {
+  const f = DB.maps.get(loadedMapFor(it))?.f?.[it.i];
+  if (!f?.d) return null;
+  const bb = f.bb;
+  const w = bb[2] - bb[0], hh = bb[3] - bb[1];
+  const pad = Math.max(w, hh) * 0.1;
+  return h('span', {
+    class: 'shapechip',
+    html: `<svg viewBox="${bb[0] - pad} ${bb[1] - pad} ${w + pad * 2} ${hh + pad * 2}" preserveAspectRatio="xMidYMid meet"><path d="${f.d}"/></svg>`,
+  });
+}
+
+// THE HEADLINE.
+//
+// "You can name 0 of 93" was technically true and practically useless: naming
+// a place means holding it for three weeks, so that number is structurally
+// zero for the first three weeks however well you play, and it reads as "you
+// got nothing right". The sentence now reports what is actually true today and
+// only makes the stronger claim once the stronger claim is available.
+function ledgerSentence(ledger, packName) {
+  if (ledger.itemsKnown > 0) {
+    return [`You can name ${ledger.itemsKnown} of ${ledger.items} in ${packName}.`,
+      `${ledger.itemsPat} down pat · ${ledger.itemsMet} met · ${ledger.secure} facets secure.`];
+  }
+  if (ledger.itemsPat > 0) {
+    return [`You have ${ledger.itemsPat} of ${ledger.items} in ${packName} down pat.`,
+      `Met ${ledger.itemsMet}. Down pat is three right in a row; naming one for good means still having it in three weeks.`];
+  }
+  if (ledger.itemsMet > 0) {
+    return [`You have met ${ledger.itemsMet} of ${ledger.items} in ${packName}.`,
+      'Get one right three times running and it is down pat.'];
+  }
+  return [`${ledger.items} places in ${packName}.`, 'None met yet.'];
+}
+
 function figureFor(fig) {
   if (fig.type === 'flag') {
     const box = h('div', { class: 'figure flag' });
@@ -427,12 +475,20 @@ function figureFor(fig) {
 
 function optionSurface(q) {
   const box = h('div', { class: 'options' });
+  // A flag beside the name, wherever there is one and it is not the thing being
+  // tested. It identifies the option at a glance, it teaches the flag for free,
+  // and — because countries have flags and most islands do not — it quietly
+  // signals which kind of thing you are being offered.
+  const withFlags = q.kind !== 'flag-name';
   for (const o of q.options) {
     const long = o.label.length >= 26;
+    const it = item(o.id);
+    const flag = withFlags && it?.fl && DB.flags?.[it.fl] ? DB.flags[it.fl] : null;
     const btn = h('button', {
       class: 'option tap', 'data-opt': o.id,
       onclick: (e) => { if (e.target.closest('.say')) return; answer(o.id); },
     },
+      flag ? h('span', { class: 'thumb', html: flag }) : null,
       h('span', { class: `option-label ${long ? 'long' : ''}` }, o.label),
       h('span', { class: 'verdict-mark', style: 'display:none' }));
     const sp = speakBtn(o.label, { klass: 'say tap small' });
@@ -554,9 +610,10 @@ function showVerdict(v, q) {
     h('div', { class: 'sheet-grab' }),
     h('div', { class: `sheet-head ${v.right ? 'right' : 'wrong'}` },
       h('span', { class: 'sheet-glyph', html: (v.right ? ICON.tick : ICON.cross).replace('<svg', '<svg class="x"') }),
-      h('div', {},
+      h('div', { style: 'flex:1;min-width:0' },
         h('div', { class: 'sheet-answer' }, v.label || target?.n || ''),
-        context ? h('div', { class: 'sheet-context' }, context) : null)),
+        context ? h('div', { class: 'sheet-context' }, context) : null),
+      target?.fl && DB.flags?.[target.fl] ? h('span', { class: 'thumb', html: DB.flags[target.fl] }) : null),
     body,
     h('div', { class: 'sheet-foot' }, cont));
   sheetHost.hidden = false;
@@ -638,10 +695,13 @@ screens.summary = () => {
       h('div', { class: 'bubble' },
         h('div', { class: 'stat' }, h('span', { class: 'n' }, s.newItems)),
         h('div', { class: 'label', style: 'margin-top:4px' }, 'new places'))),
-    h('p', { class: 'sentence', style: 'margin-top:var(--s5)' },
-      `You can name ${ledger.itemsKnown} of ${ledger.items} in ${p.short}.`),
-    h('p', { class: 'lede', style: 'font-size:.95rem' },
-      `${ledger.cards} cards: ${ledger.met} met, ${ledger.known} known, ${ledger.secure} secure.`),
+    ...(() => {
+      const [head, sub] = ledgerSentence(ledger, p.short);
+      return [
+        h('p', { class: 'sentence', style: 'margin-top:var(--s5)' }, head),
+        h('p', { class: 'lede', style: 'font-size:.95rem' }, sub),
+      ];
+    })(),
     seen.size ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'What slipped'), missed) : null,
     h('button', { class: 'btn tap', style: 'margin-top:var(--section)', onclick: () => startRound({ mode: 'quick' }) }, 'Another round'),
@@ -1090,8 +1150,13 @@ screens.atlasItem = ({ id, from }) => {
   const it = item(id);
   if (!it) return h('div', { class: 'screen' }, h('p', { class: 'lede' }, 'Not in the corpus.'));
   const facets = facetsOf(activePacks())(it);
-  const mapId = (it.m || [])[0];
+  const mapId = loadedMapFor(it);
   const map = DB.maps.get(mapId);
+  // Not in memory yet? Fetch the one it lives on and come back — an Atlas card
+  // without the outline is the half of the card that matters missing.
+  if (!map && (it.m || []).length) {
+    loadMap(it.m[0]).then(() => { if (current?.name === 'atlasItem' && current.params.id === id) go('atlasItem', { id, from }); });
+  }
 
   const facts = [];
   const add = (k, v) => { if (v) facts.push([k, v]); };
@@ -1129,6 +1194,29 @@ screens.atlasItem = ({ id, from }) => {
       speakBtn(`${k}. ${v}`)));
   }
 
+  // What is INSIDE this place: its named islands, the territories it
+  // administers, its provinces, its cities. This is how you look up "the
+  // islands of the Bahamas" without knowing their names first, and each row
+  // carries the thing that identifies it — a flag if it has one, its own
+  // outline if it does not.
+  const kids = [...DB.items.values()].filter((o) => o.pr === it.i || o.a1 === it.i);
+  const ruled = [...DB.items.values()].filter((o) => o.k === 'territory' && o.x?.sov === it.n);
+  const inside = [...new Map([...kids, ...ruled].map((o) => [o.i, o])).values()]
+    .sort((a, b) => (a.k === b.k ? 0 : a.k === 'territory' ? -1 : 1)
+      || (b.ll?.[0] ?? 0) - (a.ll?.[0] ?? 0));
+
+  const insideList = h('div', { class: 'list' });
+  for (const o of inside.slice(0, 40)) {
+    const fig = o.fl && DB.flags?.[o.fl]
+      ? h('span', { class: 'thumb', html: DB.flags[o.fl] })
+      : shapeChip(o);
+    insideList.append(h('button', { class: 'listrow tap', onclick: () => go('atlasItem', { id: o.i, from }) },
+      fig || h('i', { class: `pip ${State.itemState(o.i, facetsOf(activePacks())(o))}` }),
+      h('span', { class: 'name' }, o.n),
+      h('span', { class: 'meta' }, kindLabel(o)),
+      chev()));
+  }
+
   const state = State.itemState(it.i, facets);
   const perFacet = facets.map((f) => `${FACET_LABEL[f]}: ${cardState(State.card(it.i, f))}`).join(' · ');
 
@@ -1141,6 +1229,10 @@ screens.atlasItem = ({ id, from }) => {
       contested.map((g) => h('p', { class: 'lede', style: 'font-size:.95rem;margin-top:var(--s2)' },
         `Whether ${it.n} belongs to ${g.name} is argued both ways. ${g.note || ''}`))) : null,
     body,
+    inside.length ? h('div', { style: 'margin-top:var(--s6)' },
+      h('div', { class: 'label' },
+        inside.length + (it.k === 'country' || it.k === 'territory' ? ' inside it' : ' nearby')),
+      insideList) : null,
     h('div', { class: 'sep' }),
     h('div', { class: 'label' }, 'Where you are with it'),
     h('p', { class: 'sentence' }, state === 'unseen' ? 'Not met yet.' : perFacet));
@@ -1187,9 +1279,12 @@ screens.progress = () => {
 
   return h('div', { class: 'screen' },
     backBar('Progress', () => go('home')),
-    h('p', { class: 'sentence' }, `You can name ${ledger.itemsKnown} of ${ledger.items} in ${p.short}.`),
-    h('p', { class: 'lede', style: 'font-size:.95rem' },
-      `${ledger.cards} cards: ${ledger.met} met, ${ledger.known} known, ${ledger.secure} secure.`),
+    ...(() => {
+      const [head, sub] = ledgerSentence(ledger, p.short);
+      return [h('p', { class: 'sentence' }, head), h('p', { class: 'lede', style: 'font-size:.95rem' }, sub)];
+    })(),
+    h('p', { class: 'lede muted', style: 'font-size:.85rem;margin-top:var(--s2)' },
+      'Down pat is three right in a row — today counts. Known is still there after three weeks, secure after three months; those two are about time and cannot be rushed.'),
     mapBox,
     h('div', { class: 'grid2', style: 'margin-top:var(--s5)' },
       h('div', { class: 'bubble' },
@@ -1200,8 +1295,9 @@ screens.progress = () => {
           : h('div', { class: 'stat' }, h('span', { class: 'n', style: 'font-size:1.4rem' }, 'not yet')),
         h('div', { class: 'label', style: 'margin-top:6px' }, 'practised')),
       h('div', { class: 'bubble' },
-        h('div', { class: 'stat' }, h('span', { class: 'n' }, ledger.itemsMet)),
-        h('div', { class: 'label', style: 'margin-top:6px' }, 'places met'))),
+        h('div', { class: 'stat' }, h('span', { class: 'n' }, ledger.itemsPat),
+          h('span', { class: 'u' }, `of ${ledger.itemsMet} met`)),
+        h('div', { class: 'label', style: 'margin-top:6px' }, 'down pat'))),
     lapsing.length ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'Going grey'),
       h('p', { class: 'lede', style: 'font-size:.95rem' },
@@ -1225,8 +1321,8 @@ screens.settings = () => {
 
   return h('div', { class: 'screen' },
     backBar('Settings', () => go('home')),
-    seg('Read aloud', 'Speech is primed on your first tap; without that, phones refuse it silently.',
-      [['off', 'Off'], ['prompt', 'The question'], ['both', 'Question and answer']], 'speech'),
+    seg('Read aloud', 'The speaker buttons are always there. This is only about what speaks on its own.',
+      [['manual', 'Only when I tap'], ['prompt', 'The question'], ['both', 'Question and answer'], ['off', 'No buttons']], 'speech'),
     seg('Move on', 'A miss never moves on by itself, whatever this says.',
       [['auto', 'After a pause'], ['tap', 'Only when I tap']], 'advance'),
     seg('Clock', 'Off by default. A clock measures how fast you read, not what you know.',

@@ -165,6 +165,15 @@ function claimMinor(pt) {
   return null;
 }
 
+// An island is never more prominent than the country that holds it. Every
+// island used to be a flat tier 2 while Dominica, Grenada and Saint Lucia were
+// tier 4 on population — so the Caribbean introduced sixty-five obscure islands
+// before it reached the countries, which is exactly backwards. An island now
+// sits one rung behind its parent, and an island whose parent is not even in
+// the pack (San Andrés, Cozumel, Roatán, Margarita) goes last: there is nothing
+// in the pack to hang it on.
+const islandTier = (parent) => Math.min(4, Math.max(2, (parent?.t || 3) + 1));
+
 const claimed = new Map();   // parent -> Set(polygon index)
 let islandsBuilt = 0;
 let fromMinor = 0;
@@ -184,7 +193,7 @@ for (const isl of ISLANDS) {
         alt: [...new Set([...(isl.alt || []), ...(extra.alt || [])])],
         pr: pid, cap: extra.cap || null, caps: extra.cap ? [extra.cap] : [],
         fl: islandFlags[isl.id] ? 'isl-' + isl.id : null,
-        ll: [isl.lat, isl.lon], t: 2, note: isl.note || null, pk: [],
+        ll: [isl.lat, isl.lon], t: islandTier(parent), note: isl.note || null, pk: [],
         x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n },
       });
       geom.set(it.i, [{ type: 'Polygon', coordinates: minor }]);
@@ -221,7 +230,7 @@ for (const isl of ISLANDS) {
     // single country.
     fl: islandFlags[isl.id] ? 'isl-' + isl.id : null,
     ll: [isl.lat, isl.lon],
-    t: 2,
+    t: islandTier(parent),
     note: isl.note || null,
     pk: [],
     x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n },

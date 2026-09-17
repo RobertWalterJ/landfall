@@ -138,6 +138,23 @@ Two numbers in that design came from simulation rather than taste
   group only become askable once you can reliably find it. Asking for Basseterre
   before you know where Saint Kitts is is asking you to memorise a word pair.
 
+## Picking a place on a map
+
+Every candidate used to own an invisible hit circle, and SVG hands a tap to
+whichever element is on top — so a small island's circle sitting over Jamaica's
+landmass stole taps meant for Jamaica. Overlapping targets are the wrong model
+and no amount of shrinking them fixes it.
+
+One capture layer now covers the map and the candidate is worked out from the
+point, in this order: **inside a coastline wins outright**; otherwise the
+**nearest candidate within a thumb's reach**; otherwise **nothing at all**, so a
+stray tap in open sea cannot cost a wrong answer.
+
+And it resolves on pointer-UP. Press, see which island lights up, slide to
+correct it, release to commit — which is what makes a one-millimetre island
+selectable with a finger. Verified: the west tip of Jamaica, the point nearest
+the Caymans, selects Jamaica.
+
 ## Reading the map
 
 The figure/ground was wrong at first and it mattered more than anything else on
@@ -159,13 +176,40 @@ The hierarchy, and no colour means two things: **sand** is land at rest,
 **paper + outline** is in play, **ink** is named, **brass** is given, and
 verdigris and vermilion are only ever right and wrong.
 
+## What the numbers claim
+
+Three measures, because one was not enough and the strict one alone was
+actively misleading:
+
+| | means | earned by |
+|---|---|---|
+| **met** | seen at least once | one answer |
+| **down pat** | three right in a row on every facet it has asked you | an afternoon |
+| **known** | still there after three weeks · **secure** after three months | time, and nothing else |
+
+The summary used to lead with *"You can name 0 of 93"* after a round played
+perfectly. That number was true — naming a place for good means holding it for
+three weeks, so it is structurally zero for the first three weeks — but as a
+headline it read as "you got nothing right". **Down pat** is the answer: it
+moves the day you play, it cannot be confused with the stronger claim, and the
+headline now promotes itself from *met* to *down pat* to *can name* as each
+becomes available.
+
+`known` keeps the strict rule (every facet the place supports, unopened ones
+counting against it). `down pat` is measured only over the facets that have
+actually come up, because measuring it the strict way made it structurally zero
+as well — which was the original complaint.
+
 ## Design constraints
 
 - **No timers or countdowns by default.** A clock measures reading speed, not
   knowledge. Opt-in only.
-- **Read-aloud is an accessibility feature.** Built into the prompt and the
-  options, not bolted on. Speech is primed on the first real gesture, because
-  mobile browsers silently refuse `speechSynthesis` until then.
+- **Read-aloud is an accessibility feature.** A speaker button sits beside the
+  question, every option, every fact in the Atlas and the answer in the verdict.
+  It defaults to **manual**: the buttons are always there and nothing speaks
+  until asked. Speech is primed on the first real gesture, because mobile
+  browsers silently refuse `speechSynthesis` until then.
+- **Sound is off by default**, and is only ever feedback — never information.
 - Auto-advance is generous, scaled to how much there is to read, and always
   interruptible by a tap.
 

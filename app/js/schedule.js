@@ -37,11 +37,19 @@ export const EASE_START = 2.2;
 export const EASE_MIN = 1.35;
 export const EASE_MAX = 3.0;
 export const KNOWN_AT = 21;               // days — Cepeda's gap for a year's retention
+// Getting something right three times running is worth saying out loud, even on
+// the first day. It is NOT the same claim as "known" — that one means you will
+// still have it in three weeks and cannot be earned in an afternoon — but a
+// scoreboard that can only ever read zero for three weeks tells you nothing
+// about the afternoon you just spent.
+export const DOWN_PAT_AT = 3;
 export const SECURE_AT = 90;
 const FRONTIER_ITEMS = 12;                // places unsettled at once, per pool
 const LOAD_CEILING = 25;                  // projected reviews per day
 const LEARN_STEPS = [3, 9];               // questions later, inside the round
 const FACET_UNLOCK_AT = 5;                // days on the previous facet
+// The order new material is met in, before difficulty is even considered.
+const KIND_RANK = { country: 0, territory: 1, admin1: 1, island: 2, city: 3 };
 const PARENT_KNOWN_AT = 5;                // days on the parent's place card
 
 // The order facets are opened in. Where it is comes first: it is the retrieval
@@ -71,8 +79,8 @@ function blank() {
       kinds: null,
       length: 14,
       clock: 0,              // seconds per question; 0 = no clock. The default.
-      speech: 'prompt',      // off | prompt | both
-      sound: true,
+      speech: 'manual',      // off | manual | prompt | both — manual = buttons, nothing speaks at you
+      sound: false,
       advance: 'auto',       // auto | tap
       theme: 'system',
       detail: false,         // the `facts` facet — opt-in
@@ -80,10 +88,13 @@ function blank() {
   };
 }
 
-const newCard = () => ({ iv: 0, e: EASE_START, reps: 0, lapses: 0, due: 0, last: 0, st: 'new', step: 0, ok: false, lapseRep: -9 });
+const newCard = () => ({ iv: 0, e: EASE_START, reps: 0, lapses: 0, due: 0, last: 0, st: 'new', step: 0, ok: false, run: 0, lapseRep: -9 });
 
 // What the app is allowed to claim about a card. Four words, defined on the
 // interval, and they are the only words the app uses.
+// Right three times in a row, most recently. Says nothing about next week.
+export const cardDownPat = (c) => !!c && c.ok && (c.run || 0) >= DOWN_PAT_AT;
+
 export function cardState(c) {
   if (!c || c.st === 'new') return 'unseen';
   if (c.iv >= SECURE_AT && c.reps - c.lapseRep >= 2) return 'secure';
@@ -157,27 +168,37 @@ export const State = {
   // Three counts and one sentence. The sentence is the headline: it is a count,
   // it can go down, and it is what he actually wants to be able to say.
   packLedger(items, facetsFor) {
-    let cards = 0, met = 0, known = 0, secure = 0, itemsKnown = 0, itemsMet = 0, sum = 0;
+    let cards = 0, met = 0, known = 0, secure = 0, pat = 0;
+    let itemsKnown = 0, itemsMet = 0, itemsPat = 0, sum = 0;
     const rank = { unseen: 0, met: 1, known: 2, secure: 3 };
     for (const it of items) {
       const fs = (facetsFor ? facetsFor(it) : FACET_ORDER).filter(Boolean);
-      let worst = 'secure', any = false;
+      // "Down pat" is a claim about what you have actually been asked: every
+      // facet that HAS come up is three-right-in-a-row. "Known" keeps the
+      // strict rule (every facet the place supports, unopened ones counting
+      // against it) because it is the stronger claim. Measuring down pat the
+      // strict way made it structurally zero too, which was the whole problem.
+      let worst = 'secure', any = false, allPat = false, patFail = false;
       for (const f of fs) {
-        const st = cardState(this.data.cards[it.i + '|' + f]);
+        const card = this.data.cards[it.i + '|' + f];
+        const st = cardState(card);
+        if (card) { allPat = true; if (!cardDownPat(card)) patFail = true; }
         if (st === 'unseen') { worst = 'unseen'; continue; }
         any = true; cards++;
         if (st === 'met') met++;
         else if (st === 'known') known++;
         else if (st === 'secure') secure++;
+        if (cardDownPat(card)) pat++;
         if (rank[st] < rank[worst]) worst = st;
       }
       if (any) itemsMet++;
+      if (allPat && !patFail) itemsPat++;
       if (fs.length && (worst === 'known' || worst === 'secure')) itemsKnown++;
       sum += this.itemMastery(it.i, fs);
     }
     return {
-      cards, met, known, secure,
-      items: items.length, itemsMet, itemsKnown,
+      cards, met, known, secure, pat,
+      items: items.length, itemsMet, itemsKnown, itemsPat,
       pct: items.length ? sum / items.length : 0,
     };
   },
@@ -202,6 +223,7 @@ export const State = {
     const c = this.data.cards[k] || newCard();
     c.last = now();
     c.ok = right;
+    c.run = right ? (c.run || 0) + 1 : 0;
 
     if (practice) {
       // Practice does not advance an interval. Answering a card ahead of
@@ -514,7 +536,15 @@ export class Scheduler {
       // facet on a place already met. Tier breaks ties inside a rung, and
       // latitude breaks those — the Bahamian chain, the Grenadines and the
       // Lesser Antilles arc are all monotonic north to south.
-      fresh.sort((a, b) => (b.first - a.first) || (a.tier - b.tier) || ((b.item.ll?.[0] || 0) - (a.item.ll?.[0] || 0)));
+      // Sovereign states and territories are the frame; named islands are
+      // detail hung on them. Mixing "San Andrés" into a round before Colombia
+      // — or before the Dominican Republic — asks you to tell an obscure island
+      // from a country, which is a different and much harder question than the
+      // one intended.
+      fresh.sort((a, b) => (b.first - a.first)
+        || (KIND_RANK[a.item.k] - KIND_RANK[b.item.k])
+        || (a.tier - b.tier)
+        || ((b.item.ll?.[0] || 0) - (a.item.ll?.[0] || 0)));
       return this.take(fresh[0], 'new');
     }
 

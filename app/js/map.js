@@ -218,46 +218,98 @@ export class MapView {
     }
   }
 
-  // A 60px effective target at every zoom level (Fitts), except where two
-  // candidates are close enough that equal-sized targets would overlap — an
-  // overlapping target is worse than a small one, because it makes the RIGHT
-  // answer register as wrong.
+  // ── choosing what a tap means ──────────────────────────────────────────
+  //
+  // One capture layer over the whole map, and the candidate is worked out from
+  // the point. The old approach gave every candidate its own hit circle, and
+  // SVG hit-testing hands the tap to whichever element is on top — so a small
+  // island's circle sitting over Jamaica's landmass stole taps meant for
+  // Jamaica. You cannot fix that by shrinking circles; overlapping targets are
+  // the wrong model.
+  //
+  // The rule now, in order:
+  //   1. inside a candidate's actual coastline  → that candidate, always;
+  //   2. otherwise the nearest candidate, if it is within reach of the thumb;
+  //   3. otherwise nothing at all — a tap in open sea must not cost a wrong
+  //      answer.
+  //
+  // And it resolves on pointerUP, not down: press, see which island lights up,
+  // slide to correct it, release to commit. That is what makes a 1mm island
+  // selectable with a finger.
   layHits() {
     if (!this.candidates || !this.onPick) return;
-    const upp = this.unitsPerPx();
-    let r = 30 * upp;
-    const pts = this.candidates.map((c) => this.map.f[c.id]).filter(Boolean);
-    for (let i = 0; i < pts.length; i++) {
-      for (let j = i + 1; j < pts.length; j++) {
-        const d = Math.hypot(pts[i].cx - pts[j].cx, pts[i].cy - pts[j].cy);
-        if (d < r * 1.4) r = Math.max(22 * upp, d / 1.4);
-      }
-    }
     this.gHit.replaceChildren();
-    for (const c of this.candidates) {
-      const f = this.map.f[c.id];
-      if (!f) continue;
-      const size = f.bb ? Math.max(f.bb[2] - f.bb[0], f.bb[3] - f.bb[1]) : 0;
-      const hit = el('circle', { cx: f.cx, cy: f.cy, r: Math.max(r, size * 0.62), class: 'hit', 'data-id': c.id });
-      hit.addEventListener('click', () => this.onPick(c.id));
-      this.gHit.append(hit);
-    }
-  }
+    const rect = el('rect', { x: -1e5, y: -1e5, width: 2e5, height: 2e5, class: 'hit' });
+    this.gHit.append(rect);
 
-  // "This one." A ring sized in SCREEN pixels around the feature being asked
-  // about, because Saint-Barthélemy lit up is four pixels of colour and a fill
-  // alone is not something you can find.
-  point(id) {
-    for (const n of this.gPin.querySelectorAll('circle.now')) n.remove();
-    const f = this.map?.f?.[id];
-    if (!f) return;
-    const upp = this.unitsPerPx();
-    const size = f.bb ? Math.max(f.bb[2] - f.bb[0], f.bb[3] - f.bb[1]) : 0;
-    const r = Math.max(15 * upp, size * 0.85);
-    this.gPin.append(el('circle', {
-      cx: f.cx, cy: f.cy, r, class: 'now',
-      'stroke-width': 2 * upp, 'stroke-dasharray': `${5 * upp} ${4 * upp}`,
-    }));
+    const pt = this.svg.createSVGPoint();
+    const toUser = (ev) => {
+      pt.x = ev.clientX; pt.y = ev.clientY;
+      const m = this.svg.getScreenCTM();
+      return m ? pt.matrixTransform(m.inverse()) : null;
+    };
+
+    const best = (p) => {
+      if (!p) return null;
+      // Inside a coastline wins outright, whatever else is nearby.
+      for (const c of this.candidates) {
+        const node = this.gBase.querySelector(`path.feat[data-id="${CSS.escape(c.id)}"]`);
+        try { if (node?.isPointInFill?.(p)) return c.id; } catch { /* older engines */ }
+      }
+      // Otherwise the nearest one, within a thumb's reach of it.
+      const reach = 34 * this.unitsPerPx();
+      let hit = null, bestD = Infinity;
+      for (const c of this.candidates) {
+        const f = this.map.f[c.id];
+        if (!f) continue;
+        const bb = f.mb || f.bb;
+        // Distance to the feature's box, not its centre: the far end of a long
+        // island is not far from the island.
+        const dx = bb ? Math.max(bb[0] - p.x, 0, p.x - bb[2]) : Math.abs(f.cx - p.x);
+        const dy = bb ? Math.max(bb[1] - p.y, 0, p.y - bb[3]) : Math.abs(f.cy - p.y);
+        const d = Math.hypot(dx, dy);
+        if (d < bestD) { bestD = d; hit = c.id; }
+      }
+      return bestD <= reach ? hit : null;
+    };
+
+    const show = (id) => {
+      if (id === this.pending) return;
+      this.pending = id;
+      for (const n of this.gPin.querySelectorAll('circle.aim')) n.remove();
+      for (const n of this.gBase.querySelectorAll('.aiming')) n.classList.remove('aiming');
+      if (!id) return;
+      const f = this.map.f[id];
+      if (!f) return;
+      this.gBase.querySelector(`[data-id="${CSS.escape(id)}"]`)?.classList.add('aiming');
+      const bb = f.mb || f.bb;
+      const size = bb ? Math.max(bb[2] - bb[0], bb[3] - bb[1]) : 0;
+      const upp = this.unitsPerPx();
+      this.gPin.append(el('circle', {
+        cx: f.cx, cy: f.cy, r: Math.max(17 * upp, size * 0.8), class: 'aim',
+        'stroke-width': 2.5 * upp,
+      }));
+    };
+
+    rect.addEventListener('pointerdown', (ev) => {
+      // Capture first so a finger that slides off the rect keeps sending
+      // events — but never let it take the handler down with it. It throws
+      // for a pointer id the element does not own, and an exception here
+      // means no aiming ring and no idea why.
+      try { rect.setPointerCapture(ev.pointerId); } catch { /* not capturable */ }
+      show(best(toUser(ev)));
+    });
+    rect.addEventListener('pointermove', (ev) => {
+      if (ev.buttons === 0 && ev.pointerType === 'mouse') return;
+      show(best(toUser(ev)));
+    });
+    const commit = (ev) => {
+      const id = this.pending ?? best(toUser(ev));
+      show(null);
+      if (id) this.onPick(id);
+    };
+    rect.addEventListener('pointerup', commit);
+    rect.addEventListener('pointercancel', () => show(null));
   }
 
   mark(id, kind) {

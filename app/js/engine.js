@@ -50,7 +50,17 @@ function nearness(target, other) {
 
 // Pick n wrong answers, ranked by nearness with a little slack so the same
 // three do not recur. Cruel mode takes the three closest, full stop.
-export function nearMisses(target, pool, n, { cruel = false, filter = null } = {}) {
+export function nearMisses(target, pool, n, { cruel = false, filter = null, mixKinds = false } = {}) {
+  // LIKE AGAINST LIKE. An option set that puts San Andrés — an obscure
+  // Colombian island — beside the Dominican Republic is not asking what it
+  // means to ask: it is asking you to tell an island from a country, which is
+  // a different and much harder question. Countries are offered against
+  // countries and islands against islands wherever the pool allows it, and the
+  // rule relaxes only when there are not four of a kind to choose from.
+  if (!mixKinds) {
+    const sameKind = pool.filter((o) => o.k === target.k && o.i !== target.i && (!filter || filter(o)));
+    if (sameKind.length >= n) return nearMisses(target, sameKind, n, { cruel, filter, mixKinds: true });
+  }
   const scored = [];
   for (const o of pool) {
     if (o.i === target.i) continue;
@@ -602,12 +612,22 @@ function mapFor(it, ctx) {
   if (ctx.preferMap && on.includes(ctx.preferMap)) return ctx.preferMap;
   return on[0];
 }
+// A shape question needs a shape. Mayreau is 0.6 units across on a map 860
+// wide and Saba is 1.0 — silhouettes that carry no information, so "which
+// island is this?" becomes a guess with a score attached. The feature has to be
+// at least 1.2% of its map's width before its outline is worth asking about,
+// which keeps Cuba, Hispaniola, Curaçao, Dominica, Martinique and Saint Lucia
+// — all genuinely recognisable — and drops the blobs.
+const SHAPE_MIN = 0.012;
 function hasShape(it, ctx) {
   const mapId = mapFor(it, ctx);
   const m = DB.maps.get(mapId);
-  if (!m) return true;                 // not loaded yet — assume yes, checked at build
+  if (!m) return true;                 // not loaded yet — checked again at build
   const f = m.f[it.i];
-  return !!(f && f.d);                 // a marker-only feature has no shape to show
+  if (!f || !f.d) return false;        // a marker-only feature has nothing to show
+  const bb = f.mb || f.bb;
+  if (!bb) return false;
+  return Math.max(bb[2] - bb[0], bb[3] - bb[1]) >= m.w * SHAPE_MIN;
 }
 
 // `facts` — currency, language, demonym, sub-region — is an opt-in layer, off
