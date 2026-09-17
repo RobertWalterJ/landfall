@@ -752,7 +752,7 @@ function showVerdict(v, q) {
   // the answer, so re-frame the correct feature into what is still showing.
   if (q.form === 'map' && mapView) {
     mount(() => {
-      mapView.reserve = sheetHost.getBoundingClientRect().height;
+      mapView.coverBy(sheetHost);        // the OVERLAP, not the sheet's height
       // On a miss, frame the right answer AND what was tapped, so the gap
       // between them is visible. On a hit, just the answer, closer in.
       const frame = !v.right && v.chosen && v.chosen !== v.correctId
@@ -1379,7 +1379,10 @@ screens.atlasItem = ({ id, from }) => {
 // ── Progress ─────────────────────────────────────────────────────────────
 screens.progress = () => {
   const packIds = activePacks();
-  const { items, ledger, facets } = packStats(packIds);
+  // `due` is used twice below. Leaving it out of this destructure threw a
+  // ReferenceError while building the screen's tree, so Progress rendered
+  // nothing at all — and Progress is the only way into a confusion drill.
+  const { items, ledger, due, facets } = packStats(packIds);
   const p = DB.packs.get(packIds[0]);
   const rec = State.practiceRecord();
   const drills = State.confusions();
