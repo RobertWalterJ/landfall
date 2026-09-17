@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "2026-09-17 17:44";
+const BUILD = "2026-09-17 17:53";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -160,19 +160,22 @@ screens.home = () => {
   });
 
   const chips = [];
+  // Plain words, and every chip goes to Progress, where each one is explained.
+  // "due" and "to untangle" were jargon — the first is a spaced-repetition term
+  // and the second was mine. Nobody should have to guess what their own home
+  // screen is telling them.
+  const chip = (dot, n, label) => h('button', { class: 'chip tap small', onclick: () => go('progress') },
+    dot, h('span', { class: 'n' }, n), label);
   // Nothing renders as a zero. Day one shows one chip — an empty ring beside a
   // pack name is a statement of scope, not a reproach.
-  chips.push(h('span', { class: 'chip' }, ring(ledger.pct, 'small'), p.short,
-    h('span', { class: 'n' }, Math.round(ledger.pct * 100) + '%')));
-  if (rec.days >= 2) chips.push(h('span', { class: 'chip' },
-    h('i', { class: 'dot', style: 'background:var(--verdigris)' }),
-    h('span', { class: 'n' }, rec.days), `of last ${rec.of} days`));
-  if (due > 0) chips.push(h('span', { class: 'chip' },
-    h('i', { class: 'dot', style: 'background:var(--brass-mark)' }),
-    h('span', { class: 'n' }, due), 'due'));
-  if (drills.length) chips.push(h('span', { class: 'chip' },
-    h('i', { class: 'dot', style: 'background:var(--vermilion)' }),
-    h('span', { class: 'n' }, drills.length), 'to untangle'));
+  chips.push(h('button', { class: 'chip tap small', onclick: () => go('progress') },
+    ring(ledger.pct, 'small'), p.short, h('span', { class: 'n' }, Math.round(ledger.pct * 100) + '%')));
+  if (rec.days >= 2) chips.push(chip(h('i', { class: 'dot', style: 'background:var(--verdigris)' }),
+    rec.days, `of last ${rec.of} days`));
+  if (due > 0) chips.push(chip(h('i', { class: 'dot', style: 'background:var(--brass-mark)' }),
+    due, 'to review'));
+  if (drills.length) chips.push(chip(h('i', { class: 'dot', style: 'background:var(--vermilion)' }),
+    drills.length, drills.length === 1 ? 'mixed-up pair' : 'mixed-up pairs'));
 
   const mode = (icon, title, sub, status, onclick, lead = false) =>
     h('button', { class: `mode tap ${lead ? 'lead' : ''}`, onclick },
@@ -452,6 +455,100 @@ function ledgerSentence(ledger, packName) {
   return [`${ledger.items} places in ${packName}.`, 'None met yet.'];
 }
 
+// ── teaching the answer ──────────────────────────────────────────────────
+//
+// An answer on its own teaches nothing you did not already half-know. What
+// makes a place stick is where it is, what it belongs to, and one fact with a
+// shape to it — 13 km², 1,915 people, smaller than the town you live in. Every
+// line here is assembled from the corpus, so nothing is invented: the areas and
+// populations of the islands came from Wikidata and the countries' from
+// world-countries.
+
+// Reference points a Canadian planner already has a feel for. Approximate on
+// purpose — they are the ruler, not the measurement.
+const SIZES = [
+  [630, 'Toronto'], [1_100, 'Hamilton'], [2_790, 'Prince Edward County'],
+  [5_660, 'Prince Edward Island'], [10_300, 'Cape Breton'], [18_960, 'Lake Ontario'],
+  [31_285, 'Vancouver Island'], [55_284, 'Nova Scotia'], [108_860, 'the island of Newfoundland'],
+];
+const POPS = [
+  [50_000, 'Orillia'], [145_000, 'Guelph'], [570_000, 'Hamilton'],
+  [1_020_000, 'Ottawa'], [2_790_000, 'Toronto'], [6_200_000, 'the GTA'],
+];
+
+function compare(value, table, unit) {
+  if (!value) return null;
+  let best = null, ratio = Infinity;
+  for (const [v, name] of table) {
+    const r = value > v ? value / v : v / value;
+    if (r < ratio) { ratio = r; best = [v, name]; }
+  }
+  if (!best || ratio > 6) return null;
+  const [v, name] = best;
+  // Anything inside about half again either way is simply "about the size of".
+  // Rounding the ratio without that guard produced "about a 1th of Hamilton".
+  const k = Math.round(ratio);
+  if (ratio < 1.6 || k < 2) return `about the ${unit} of ${name}`;
+  return value > v ? `about ${k}× ${name}` : `about ${fraction(k)} the ${unit} of ${name}`;
+}
+const fraction = (n) => (n === 2 ? 'half' : n === 3 ? 'a third' : n === 4 ? 'a quarter'
+  : n === 5 ? 'a fifth' : n === 6 ? 'a sixth' : `a ${n}th`);
+const num = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace('.0', '') + ' million' : n.toLocaleString());
+
+// One or two lines about the place, most specific first.
+function teachLines(it) {
+  if (!it) return [];
+  const out = [];
+  const parent = parentOf(it);
+  const groups = (it.g || []).map((g) => DB.groups.get(g)?.name).filter(Boolean);
+
+  const belongs = [];
+  if (it.k === 'island' && parent) belongs.push('Part of ' + withArticle(parent));
+  else if (it.k === 'territory' && it.x?.sov) belongs.push('Held by ' + it.x.sov);
+  else if (it.k === 'admin1' && it.x?.admin) belongs.push('In ' + it.x.admin);
+  if (groups.length) belongs.push('one of ' + groups[0].replace(/^The /, 'the '));
+  if (it.cap) belongs.push((it.k === 'country' ? 'capital ' : 'chief town ') + it.cap);
+  if (belongs.length) out.push(belongs.join(' · ') + '.');
+
+  const facts = [];
+  const area = it.x?.area;
+  if (area) {
+    const c = compare(area, SIZES, 'size');
+    facts.push(`${area >= 10 ? Math.round(area).toLocaleString() : area} km²${c ? ' — ' + c : ''}`);
+  }
+  const pop = it.x?.pop;
+  if (pop) {
+    // Below about thirty thousand the raw number is more vivid than any
+    // comparison: "1,915 people" tells you what Saba is.
+    const c = pop > 30000 ? compare(pop, POPS, 'population') : null;
+    facts.push(`${num(pop)} people${c ? ' — ' + c : ''}`);
+  }
+  if (it.k === 'country' && (it.x?.bd || []).length) {
+    const n = it.x.bd.map((b) => item('c:' + b)?.n).filter(Boolean);
+    if (n.length) facts.push('borders ' + n.join(', '));
+  }
+  if (facts.length) out.push(facts.join(' · ') + '.');
+  return out;
+}
+
+// Where it is, with enough around it to place it. Shown for every question that
+// is not already a map question — on those the map behind the sheet is the
+// answer and re-frames itself.
+function locatorFor(id) {
+  const it = item(id);
+  const mapId = it && loadedMapFor(it);
+  const map = DB.maps.get(mapId);
+  if (!map?.f?.[id]) return null;
+  const well = h('div', { class: 'mapwell locator' });
+  mount(() => {
+    const mv = new MapView(well);
+    mv.draw(map, { candidates: [{ id }], rings: true, labels: { [id]: it.n } });
+    mv.setView(mv.boxOf([id], 3.2), { animate: false });
+    mv.mark(id, 'right');
+  });
+  return well;
+}
+
 function figureFor(fig) {
   if (fig.type === 'flag') {
     const box = h('div', { class: 'figure flag' });
@@ -548,10 +645,11 @@ function answer(choiceId) {
     }
   }
   if (q.form === 'map' && mapView) {
-    mapView.mark(verdict.correctId, 'right');
-    if (choiceId && choiceId !== verdict.correctId) mapView.mark(choiceId, 'wrong');
-    const labels = {};
-    labels[verdict.correctId] = item(verdict.correctId)?.n || '';
+    // Name BOTH: the one you meant and the one you hit. Being told only the
+    // right answer leaves you none the wiser about what went wrong, and on a
+    // phone what went wrong is usually a thumb rather than a memory.
+    const labels = { [verdict.correctId]: item(verdict.correctId)?.n || '' };
+    if (choiceId && choiceId !== verdict.correctId) labels[choiceId] = item(choiceId)?.n || '';
     mapView.draw(mapView.map, { candidates: q.map.candidates, labels });
     mapView.mark(verdict.correctId, 'right');
     if (choiceId && choiceId !== verdict.correctId) mapView.mark(choiceId, 'wrong');
@@ -586,6 +684,12 @@ function showVerdict(v, q) {
   const lines = [];
   if (v.explain) lines.push(v.explain);
   if (v.note) lines.push(v.note);
+  for (const l of teachLines(target)) if (!lines.includes(l)) lines.push(l);
+  // Where it is comes first, because it is the thing the words hang on.
+  if (q.form !== 'map') {
+    const loc = locatorFor(v.correctId);
+    if (loc) body.append(loc);
+  }
   for (const line of lines) body.append(h('p', {}, line));
 
   const conf = !v.right && v.chosen ? State.confusionWeight(q.itemId, v.chosen) : 0;
@@ -623,7 +727,11 @@ function showVerdict(v, q) {
   if (q.form === 'map' && mapView) {
     mount(() => {
       mapView.reserve = sheetHost.getBoundingClientRect().height;
-      mapView.setView(mapView.boxOf([v.correctId], 1.4));
+      // On a miss, frame the right answer AND what was tapped, so the gap
+      // between them is visible. On a hit, just the answer, closer in.
+      const frame = !v.right && v.chosen && v.chosen !== v.correctId
+        ? [v.correctId, v.chosen] : [v.correctId];
+      mapView.setView(mapView.boxOf(frame, frame.length > 1 ? 0.55 : 1.4));
     });
   }
 
@@ -1298,13 +1406,20 @@ screens.progress = () => {
         h('div', { class: 'stat' }, h('span', { class: 'n' }, ledger.itemsPat),
           h('span', { class: 'u' }, `of ${ledger.itemsMet} met`)),
         h('div', { class: 'label', style: 'margin-top:6px' }, 'down pat'))),
+    h('div', { style: 'margin-top:var(--s6)' },
+      h('div', { class: 'label' }, 'To review'),
+      h('p', { class: 'lede', style: 'font-size:.95rem' },
+        due > 0
+          ? `${due} ${due === 1 ? 'thing has' : 'things have'} come round again. Spacing them out is what moves them from "down pat" to knowing them — a round now is worth more than a round tomorrow.`
+          : 'Nothing has come round yet. Anything you play now is practice rather than review, which is fine but counts for less.')),
     lapsing.length ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'Going grey'),
       h('p', { class: 'lede', style: 'font-size:.95rem' },
         `${lapsing.length} ${lapsing.length === 1 ? 'place is' : 'places are'} overdue by more than half their own interval. They are shown faded because that is what has happened to the memory.`)) : null,
     drills.length ? h('div', { style: 'margin-top:var(--s6)' },
-      h('div', { class: 'label' }, 'Worth untangling'),
-      h('p', { class: 'lede', style: 'font-size:.95rem' }, 'Pairs you have mixed up more than once. A drill puts them head to head.'),
+      h('div', { class: 'label' }, 'Mixed-up pairs'),
+      h('p', { class: 'lede', style: 'font-size:.95rem' },
+        'Two places you have swapped for each other more than once. Tapping one runs a short drill that puts just those two head to head, which is the fastest way to stop confusing them.'),
       drillRows) : null);
 };
 

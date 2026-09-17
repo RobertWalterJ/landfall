@@ -216,3 +216,32 @@ export function fitter(geoms, project, width, pad = 0) {
   };
   return { toXY, width, height, scale, extent: { minX, maxX, minY, maxY } };
 }
+
+// Real area on the globe, in km², from a lon/lat ring.
+//
+// The curated islands arrive with a name and a coordinate and no size, and
+// "Saba is 13 km²" is one of the most useful things you can be told about Saba
+// — it is what makes the shortest-runway story land. This is the standard
+// spherical excess formula, so the number comes from the coastline the island
+// actually claimed rather than from anyone's memory.
+export function areaKm2(geoms) {
+  const R = 6371.0088;
+  const RAD = Math.PI / 180;
+  let total = 0;
+  for (const g of geoms) {
+    for (const poly of (g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [])) {
+      // Outer ring adds, holes subtract.
+      poly.forEach((ring, i) => {
+        let sum = 0;
+        for (let k = 0; k < ring.length; k++) {
+          const [lon1, lat1] = ring[k];
+          const [lon2, lat2] = ring[(k + 1) % ring.length];
+          sum += (lon2 - lon1) * RAD * (2 + Math.sin(lat1 * RAD) + Math.sin(lat2 * RAD));
+        }
+        const a = Math.abs(sum * R * R / 2);
+        total += i === 0 ? a : -a;
+      });
+    }
+  }
+  return total;
+}

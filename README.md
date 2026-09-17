@@ -138,6 +138,29 @@ Two numbers in that design came from simulation rather than taste
   group only become askable once you can reliably find it. Asking for Basseterre
   before you know where Saint Kitts is is asking you to memorise a word pair.
 
+## Teaching the answer
+
+An answer on its own teaches nothing. Every verdict now carries **where it is**
+— a locator map framing the place in its neighbourhood — and two lines built
+from the corpus:
+
+> **Cuba** · one of the Greater Antilles · capital Havana.
+> 109,884 km² — about the size of the island of Newfoundland · 11.3 million
+> people — about 2× the GTA.
+
+The comparisons are to places a Canadian planner already has a feel for, which
+is the point: a number you cannot picture teaches nothing either. The reference
+sizes are approximate on purpose — they are the ruler, not the measurement —
+but every figure being measured is sourced. Island areas and populations come
+from Wikidata through the same verified join as their capitals and flags.
+
+They were briefly computed from the drawn coastline instead, which put Saba at
+7 km² against a real 13. Fine for drawing, not a number to teach.
+
+On a **miss on the map**, the view frames the right answer *and the place you
+tapped*, both labelled, so you can see whether you were wrong or just a thumb's
+width out.
+
 ## Picking a place on a map
 
 Every candidate used to own an invisible hit circle, and SVG hands a tap to
@@ -150,10 +173,20 @@ point, in this order: **inside a coastline wins outright**; otherwise the
 **nearest candidate within a thumb's reach**; otherwise **nothing at all**, so a
 stray tap in open sea cannot cost a wrong answer.
 
-And it resolves on pointer-UP. Press, see which island lights up, slide to
-correct it, release to commit — which is what makes a one-millimetre island
-selectable with a finger. Verified: the west tip of Jamaica, the point nearest
-the Caymans, selects Jamaica.
+"Nearest" means nearest **coastline**, sampled along the real outline. Nearest
+bounding box put Cuba's 320-unit rectangle across the whole northern Caribbean,
+so a tap just south of Jamaica sat inside it at distance zero and answered Cuba.
+Nearest centroid is no better — it makes the eastern tip of Cuba far from Cuba.
+
+It resolves on pointer-UP. Press, see which island lights up, slide to correct
+it, release to commit — which is what makes a one-millimetre island selectable
+with a finger. Verified: every tap within twelve units north of Jamaica, towards
+Cuba, selects Jamaica.
+
+**Two fingers move and zoom the map**, one finger chooses. They cannot share a
+gesture, because a one-finger drag is already how you slide between candidates
+before committing. Zoom is the real answer to "Jamaica and Cuba are hard to tell
+apart with a thumb": at twice the scale they are not close at all.
 
 ## Reading the map
 

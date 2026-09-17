@@ -50,6 +50,7 @@ export class MapView {
     if (!this.view || !animate) {
       this.view = target;
       this.apply(target);
+      this.refresh();
       return;
     }
     const from = this.view.slice();
@@ -60,7 +61,7 @@ export class MapView {
     // map opened in a background tab stays at whatever view it started on and
     // the question is unanswerable. The tween is the nice path, not the only one.
     this.settleTimer = setTimeout(() => {
-      if (this.view !== target) { this.view = target; this.apply(target); this.onSettle?.(); }
+      if (this.view !== target) { this.view = target; this.apply(target); this.refresh(); this.onSettle?.(); }
     }, 600);
     const step = (t) => {
       const k = Math.min(1, (t - t0) / 520);
@@ -69,12 +70,21 @@ export class MapView {
       this.apply(cur);
       this.view = cur;
       if (k < 1) this.raf = requestAnimationFrame(step);
-      else { this.view = target; clearTimeout(this.settleTimer); this.onSettle?.(); }
+      else { this.view = target; clearTimeout(this.settleTimer); this.refresh(); this.onSettle?.(); }
     };
     this.raf = requestAnimationFrame(step);
   }
 
   apply(v) { this.svg.setAttribute('viewBox', v.map((n) => Math.round(n * 10) / 10).join(' ')); }
+
+  // Anything sized in screen pixels has to be laid out again when the zoom
+  // changes — labels and hit targets are both computed back through
+  // unitsPerPx(), and laying them out before the first setView sized a 12px
+  // label at 34 map units, which rendered as a word bigger than the island.
+  refresh() {
+    if (this.labels) this.layLabels(this.labels, this.collide);
+    if (this.candidates && this.onPick) this.layHits();
+  }
 
   // Grow a box to the aspect ratio of the element so nothing is squashed, and
   // never zoom in past a floor — a single small island filling the screen is
@@ -181,6 +191,7 @@ export class MapView {
     if (onPick) {
       this.candidates = candidates;
       this.onPick = onPick;
+      this.outline = null;
       this.layHits();
       // Hit radii are in SVG units, which mean nothing until the zoom has
       // settled: 22 units is over 100px zoomed into the Lesser Antilles and
@@ -236,8 +247,33 @@ export class MapView {
   // And it resolves on pointerUP, not down: press, see which island lights up,
   // slide to correct it, release to commit. That is what makes a 1mm island
   // selectable with a finger.
+  // Points along each candidate's coastline, sampled once per question. A
+  // path's own geometry is the only honest way to ask "how far is this tap
+  // from that island".
+  sampleOutlines() {
+    this.outline = new Map();
+    for (const c of this.candidates || []) {
+      const f = this.map.f[c.id];
+      if (!f) continue;
+      const node = this.gBase.querySelector(`path.feat[data-id="${CSS.escape(c.id)}"]`);
+      const pts = [[f.cx, f.cy]];
+      try {
+        const len = node?.getTotalLength?.() || 0;
+        if (len > 0) {
+          const n = Math.min(64, Math.max(12, Math.round(len / 6)));
+          for (let i = 0; i < n; i++) {
+            const pt = node.getPointAtLength((len * i) / n);
+            pts.push([pt.x, pt.y]);
+          }
+        }
+      } catch { /* a marker-only feature keeps just its point */ }
+      this.outline.set(c.id, pts);
+    }
+  }
+
   layHits() {
     if (!this.candidates || !this.onPick) return;
+    if (!this.outline) this.sampleOutlines();
     this.gHit.replaceChildren();
     const rect = el('rect', { x: -1e5, y: -1e5, width: 2e5, height: 2e5, class: 'hit' });
     this.gHit.append(rect);
@@ -256,19 +292,23 @@ export class MapView {
         const node = this.gBase.querySelector(`path.feat[data-id="${CSS.escape(c.id)}"]`);
         try { if (node?.isPointInFill?.(p)) return c.id; } catch { /* older engines */ }
       }
-      // Otherwise the nearest one, within a thumb's reach of it.
+      // Otherwise the nearest COASTLINE, within a thumb's reach.
+      //
+      // Not the nearest bounding box: Cuba's box is 320 units wide and sprawls
+      // across the whole northern Caribbean, so a tap just south of Jamaica sat
+      // INSIDE Cuba's box at distance zero and answered Cuba. Not the nearest
+      // centroid either — that makes the eastern tip of Cuba far from Cuba.
+      // Distance to points sampled along the actual outline is the only measure
+      // that behaves for both a 320-unit island and a 1-unit one.
       const reach = 34 * this.unitsPerPx();
       let hit = null, bestD = Infinity;
       for (const c of this.candidates) {
-        const f = this.map.f[c.id];
-        if (!f) continue;
-        const bb = f.mb || f.bb;
-        // Distance to the feature's box, not its centre: the far end of a long
-        // island is not far from the island.
-        const dx = bb ? Math.max(bb[0] - p.x, 0, p.x - bb[2]) : Math.abs(f.cx - p.x);
-        const dy = bb ? Math.max(bb[1] - p.y, 0, p.y - bb[3]) : Math.abs(f.cy - p.y);
-        const d = Math.hypot(dx, dy);
-        if (d < bestD) { bestD = d; hit = c.id; }
+        const pts = this.outline.get(c.id);
+        if (!pts) continue;
+        for (const [x, y] of pts) {
+          const d = Math.hypot(x - p.x, y - p.y);
+          if (d < bestD) { bestD = d; hit = c.id; }
+        }
       }
       return bestD <= reach ? hit : null;
     };
@@ -291,7 +331,29 @@ export class MapView {
       }));
     };
 
+    // ── pinch and pan ────────────────────────────────────────────────────
+    //
+    // TWO fingers move the map, one finger chooses. They cannot share a
+    // gesture: a one-finger drag is already how you slide from one island to
+    // the next before committing, and a map that pans under that would make
+    // selection impossible.
+    //
+    // Zooming is the real answer to "Jamaica and Cuba are hard to tell apart
+    // with a thumb" — at twice the scale they are not close at all.
+    const touches = new Map();
+    let gesture = null;
+    const spread = () => {
+      const [a, b] = [...touches.values()];
+      return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    };
+
     rect.addEventListener('pointerdown', (ev) => {
+      touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (touches.size === 2) {
+        show(null);                       // a second finger means this is a gesture
+        gesture = { ...spread(), view: this.view.slice() };
+        return;
+      }
       // Capture first so a finger that slides off the rect keeps sending
       // events — but never let it take the handler down with it. It throws
       // for a pointer id the element does not own, and an exception here
@@ -300,16 +362,63 @@ export class MapView {
       show(best(toUser(ev)));
     });
     rect.addEventListener('pointermove', (ev) => {
+      if (touches.has(ev.pointerId)) touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (gesture && touches.size >= 2) {
+        const now = spread();
+        const scale = gesture.d > 8 ? gesture.d / now.d : 1;      // apart = zoom in
+        const rectBox = this.host.getBoundingClientRect();
+        const w = Math.min(this.map.w * 1.6, Math.max(this.map.w * 0.04, gesture.view[2] * scale));
+        const h = w * (gesture.view[3] / gesture.view[2]);
+        // Keep the point between the fingers under the fingers.
+        const fx = (gesture.cx - rectBox.left) / rectBox.width;
+        const fy = (gesture.cy - rectBox.top) / rectBox.height;
+        const anchorX = gesture.view[0] + gesture.view[2] * fx;
+        const anchorY = gesture.view[1] + gesture.view[3] * fy;
+        const dx = (now.cx - gesture.cx) / rectBox.width * w;
+        const dy = (now.cy - gesture.cy) / rectBox.height * h;
+        this.view = [anchorX - w * fx - dx, anchorY - h * fy - dy, w, h];
+        this.apply(this.view);
+        return;
+      }
       if (ev.buttons === 0 && ev.pointerType === 'mouse') return;
       show(best(toUser(ev)));
     });
     const commit = (ev) => {
+      touches.delete(ev.pointerId);
+      if (gesture) {
+        // A gesture never answers a question. Re-lay anything sized in screen
+        // pixels now that the zoom has changed.
+        if (touches.size === 0) { gesture = null; this.refresh(); }
+        show(null);
+        return;
+      }
       const id = this.pending ?? best(toUser(ev));
       show(null);
       if (id) this.onPick(id);
     };
     rect.addEventListener('pointerup', commit);
-    rect.addEventListener('pointercancel', () => show(null));
+    rect.addEventListener('pointercancel', (ev) => {
+      touches.delete(ev.pointerId);
+      if (touches.size === 0) { gesture = null; this.refresh(); }
+      show(null);
+    });
+
+    // A mouse wheel or trackpad pinch does the same thing, for the desktop.
+    this.host.addEventListener('wheel', (ev) => {
+      ev.preventDefault();
+      const rectBox = this.host.getBoundingClientRect();
+      const k = Math.exp(ev.deltaY * 0.0016);
+      const w = Math.min(this.map.w * 1.6, Math.max(this.map.w * 0.04, this.view[2] * k));
+      const h = w * (this.view[3] / this.view[2]);
+      const fx = (ev.clientX - rectBox.left) / rectBox.width;
+      const fy = (ev.clientY - rectBox.top) / rectBox.height;
+      const ax = this.view[0] + this.view[2] * fx;
+      const ay = this.view[1] + this.view[3] * fy;
+      this.view = [ax - w * fx, ay - h * fy, w, h];
+      this.apply(this.view);
+      clearTimeout(this.wheelTimer);
+      this.wheelTimer = setTimeout(() => this.refresh(), 160);
+    }, { passive: false });
   }
 
   mark(id, kind) {

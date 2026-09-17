@@ -143,7 +143,7 @@ await entities(capIds);
 
 // ── 4. emit ──────────────────────────────────────────────────────────────
 const out = {};
-let withCap = 0, withFlag = 0, withAlias = 0;
+let withCap = 0, withFlag = 0, withAlias = 0, withArea = 0, withPop = 0;
 for (const [id, m] of Object.entries(matched)) {
   const e = store[m.q];
   const isl = ISLANDS.find((x) => x.id === id);
@@ -170,6 +170,25 @@ for (const [id, m] of Object.entries(matched)) {
   // THE FLAG HAS TO BE THE ISLAND'S OWN. P41 on Saint Thomas points at the
   // flag of the United States Virgin Islands, which would make "whose flag is
   // this?" unanswerable — the island's name must appear in the file name.
+  // Area and population, from the source rather than from the coastline we
+  // happen to have drawn. Natural Earth's 10m outline of Saba measures 7 km²
+  // against a real 13 — fine for drawing, not a number to teach.
+  const areaVal = e?.claims?.P2046?.[0]?.mainsnak?.datavalue?.value;
+  if (areaVal?.amount) {
+    const n = Math.abs(Number(areaVal.amount));
+    const unit = String(areaVal.unit || '').split('/').pop();
+    const km2 = unit === 'Q712226' ? n            // square kilometre
+      : unit === 'Q35852' ? n / 100               // hectare
+        : unit === 'Q232291' ? n * 2.589988       // square mile
+          : null;
+    if (km2 != null && km2 > 0) rec.area = km2 >= 10 ? Math.round(km2) : Math.round(km2 * 10) / 10;
+  }
+  const popVal = e?.claims?.P1082?.[0]?.mainsnak?.datavalue?.value;
+  if (popVal?.amount) {
+    const n = Math.round(Math.abs(Number(popVal.amount)));
+    if (n > 0) rec.pop = n;
+  }
+
   const flag = claim(e, 'P41');
   if (typeof flag === 'string') {
     const f = norm(flag);
@@ -183,12 +202,15 @@ for (const [id, m] of Object.entries(matched)) {
     .slice(0, 4);
   if (alts.length) { rec.alt = alts; withAlias++; }
 
+  if (rec.area) withArea++;
+  if (rec.pop) withPop++;
   out[id] = rec;
 }
 
 writeFileSync(join(CACHE, 'islands.json'), JSON.stringify(out, null, 1));
 console.log(`\nmatched ${Object.keys(out).length} of ${ISLANDS.length} curated islands`);
 console.log(`  ${withCap} with a capital · ${withFlag} with their own flag · ${withAlias} with alternative names`);
+console.log(`  ${withArea} with an area · ${withPop} with a population`);
 if (report.length) {
   console.log('\n' + report.length + ' unmatched:');
   for (const r of report) console.log('  ! ' + r);

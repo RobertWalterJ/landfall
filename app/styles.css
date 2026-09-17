@@ -282,8 +282,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .isle .mark { position: absolute; top: -2px; right: -4px; color: var(--vermilion); }
 .isle .mark svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.75; fill: none; transform: rotate(6deg); }
 
-.chips { display: flex; gap: var(--s2); margin-top: var(--s4); overflow-x: auto; scrollbar-width: none; }
-.chips::-webkit-scrollbar { display: none; }
+/* Wrap rather than scroll. A horizontally scrolling row hides the thing it is
+   there to tell you — you should never have to swipe your own status into
+   view — and two short lines cost less than a hidden chip. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
 
 .modes { display: grid; gap: var(--stack); margin-top: var(--s5); }
 .mode {
@@ -413,8 +415,19 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   :root:not([data-theme="light"]) .map.few .feat.cand { filter: drop-shadow(0 0 3px rgba(87, 199, 217, .7)); }
 }
 :root[data-theme="dark"] .map.few .feat.cand { filter: drop-shadow(0 0 3px rgba(87, 199, 217, .7)); }
-.map .feat.right { fill: var(--verdigris); stroke: none; }
-.map .feat.wrong { fill: var(--vermilion); stroke: none; }
+.map .feat.right {
+  fill: var(--verdigris); stroke: none;
+  filter: drop-shadow(0 0 5px rgba(11, 122, 94, .6));
+}
+.map .feat.wrong {
+  fill: var(--vermilion); stroke: none;
+  filter: drop-shadow(0 0 5px rgba(194, 59, 34, .55));
+}
+/* Once an answer is marked, the rest of the map gets out of the way — the two
+   that matter are the one you meant and the one you hit. */
+.map:has(.feat.right) .feat:not(.right):not(.wrong) { opacity: .3; }
+.map:has(.feat.right) .ctx { opacity: .18; }
+.map:has(.feat.right) text.mlabel { font-weight: 700; }
 .map .pos { fill: none; stroke: var(--sea); stroke-width: 2.2px; stroke-dasharray: 4 3; opacity: .95;
   vector-effect: non-scaling-stroke; }
 .map .hit { fill: transparent; }
@@ -483,8 +496,18 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .sheet.out { animation: sheet-out 160ms var(--e-out) both; }
 @keyframes sheet-out { to { opacity: 0; transform: translateY(10px); } }
 .sheet-grab { width: 34px; height: 4px; border-radius: 2px; background: var(--hairline); margin: 0 auto var(--s2); }
-.sheet-head { display: flex; gap: var(--s3); align-items: flex-start; position: relative; padding-left: var(--s2); }
-.sheet-head::before { content: ''; position: absolute; left: -6px; top: 4px; bottom: 4px; width: 3px; border-radius: var(--r-pill); }
+/* The verdict wears its colour. A 3px bar was too quiet to read at a glance —
+   the head now sits on its own wash, so right and wrong are legible before you
+   have read a word, and the glyph and the bar still carry it for anyone who
+   cannot separate the two hues. */
+.sheet-head {
+  display: flex; gap: var(--s3); align-items: flex-start; position: relative;
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  margin: 0 calc(var(--s2) * -1); border-radius: var(--r-bubble);
+}
+.sheet-head.right { background: var(--wash-right); }
+.sheet-head.wrong { background: var(--wash-wrong); }
+.sheet-head::before { content: ''; position: absolute; left: 6px; top: 10px; bottom: 10px; width: 4px; border-radius: var(--r-pill); }
 .sheet-head.right::before { background: var(--verdigris); }
 .sheet-head.wrong::before { background: var(--vermilion); }
 .sheet-glyph { width: 28px; height: 28px; flex: none; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
@@ -493,6 +516,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .sheet-answer { font: 700 clamp(1.6rem, 7vw, 2rem)/1.15 var(--font-read); color: var(--ink); letter-spacing: -.01em; }
 .sheet-context { font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: 3px; }
 .sheet-body { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: var(--s3); }
+/* The locator inside the verdict: small, fixed, and always the first thing.
+   You are told where it is before you are told anything about it. */
+.mapwell.locator { flex: none; height: 130px; min-height: 0; margin-bottom: var(--s3); }
 .sheet-body p {
   font: 400 1.0625rem/1.65 var(--font-read); color: var(--ink-2);
   letter-spacing: .01em; max-width: 60ch; margin: 0 0 var(--s3); text-wrap: pretty;

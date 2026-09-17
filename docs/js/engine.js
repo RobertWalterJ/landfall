@@ -125,7 +125,7 @@ export const KINDS = {
         form: 'map',
         prompt: 'Where is ' + withArticle(it) + '?',
         frame: 'Where is', subject: it.n,
-        promptSub: 'Tap it on the map',
+        promptSub: 'Press and slide · two fingers to zoom',
         speak: 'Where is ' + it.n,
         map: { id: mapId, candidates: shuffle([it, ...others]).map((o) => ({ id: o.i, correct: o.i === it.i })) },
         answerLabel: it.n,

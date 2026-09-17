@@ -194,7 +194,7 @@ for (const isl of ISLANDS) {
         pr: pid, cap: extra.cap || null, caps: extra.cap ? [extra.cap] : [],
         fl: islandFlags[isl.id] ? 'isl-' + isl.id : null,
         ll: [isl.lat, isl.lon], t: islandTier(parent), note: isl.note || null, pk: [],
-        x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n },
+        x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n, area: extra.area || null, pop: extra.pop || null },
       });
       geom.set(it.i, [{ type: 'Polygon', coordinates: minor }]);
       islandsBuilt++; fromMinor++;
@@ -233,7 +233,7 @@ for (const isl of ISLANDS) {
     t: islandTier(parent),
     note: isl.note || null,
     pk: [],
-    x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n },
+    x: { r: parent?.x.r, sr: parent?.x.sr, of: parent?.n, area: extra.area || null, pop: extra.pop || null },
   });
   geom.set(it.i, [{ type: 'Polygon', coordinates: polys[hit] }]);
   islandsBuilt++;
