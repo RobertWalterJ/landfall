@@ -747,6 +747,12 @@ function showVerdict(v, q) {
     body,
     h('div', { class: 'sheet-foot' }, cont));
   sheetHost.hidden = false;
+  // The sheet slides up under a finger that may still be down, and the browser
+  // reads that as a drag across newly-arrived text. Block selection for the
+  // length of the arrival only — after that the text is selectable again, so
+  // the OS's own Speak and Look Up still work on it.
+  sheetHost.classList.add('arriving');
+  setTimeout(() => sheetHost.classList.remove('arriving'), 450);
 
   // The sheet covers the bottom of the screen; on a map question the map IS
   // the answer, so re-frame the correct feature into what is still showing.

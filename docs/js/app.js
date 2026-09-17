@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "1.12 · Sep 17, 2026, 16:37 · edb6d57";
+const BUILD = "1.14 · Sep 17, 2026, 18:51 · db4c2b2";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -747,12 +747,18 @@ function showVerdict(v, q) {
     body,
     h('div', { class: 'sheet-foot' }, cont));
   sheetHost.hidden = false;
+  // The sheet slides up under a finger that may still be down, and the browser
+  // reads that as a drag across newly-arrived text. Block selection for the
+  // length of the arrival only — after that the text is selectable again, so
+  // the OS's own Speak and Look Up still work on it.
+  sheetHost.classList.add('arriving');
+  setTimeout(() => sheetHost.classList.remove('arriving'), 450);
 
   // The sheet covers the bottom of the screen; on a map question the map IS
   // the answer, so re-frame the correct feature into what is still showing.
   if (q.form === 'map' && mapView) {
     mount(() => {
-      mapView.reserve = sheetHost.getBoundingClientRect().height;
+      mapView.coverBy(sheetHost);        // the OVERLAP, not the sheet's height
       // On a miss, frame the right answer AND what was tapped, so the gap
       // between them is visible. On a hit, just the answer, closer in.
       const frame = !v.right && v.chosen && v.chosen !== v.correctId
@@ -1379,7 +1385,10 @@ screens.atlasItem = ({ id, from }) => {
 // ── Progress ─────────────────────────────────────────────────────────────
 screens.progress = () => {
   const packIds = activePacks();
-  const { items, ledger, facets } = packStats(packIds);
+  // `due` is used twice below. Leaving it out of this destructure threw a
+  // ReferenceError while building the screen's tree, so Progress rendered
+  // nothing at all — and Progress is the only way into a confusion drill.
+  const { items, ledger, due, facets } = packStats(packIds);
   const p = DB.packs.get(packIds[0]);
   const rec = State.practiceRecord();
   const drills = State.confusions();

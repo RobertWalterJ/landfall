@@ -99,6 +99,20 @@ export class MapView {
   // the verdict sheet takes 58% of the screen, and framing the answer inside
   // the full rect puts it underneath. The map must keep the thing it is being
   // asked about visible.
+  // How much of the MAP is actually hidden, in CSS pixels.
+  //
+  // Not the covering element's height: the verdict sheet is fixed to the
+  // bottom of the VIEWPORT, and the map well generally ends above it, so its
+  // full height over-states the damage — and when the well sits entirely clear
+  // of the sheet the honest answer is that nothing is covered at all.
+  coverBy(el) {
+    const host = this.host.getBoundingClientRect();
+    const over = el?.getBoundingClientRect?.();
+    this.reserve = (!over || !over.height) ? 0
+      : Math.max(0, Math.min(host.bottom, over.bottom) - Math.max(host.top, over.top));
+    return this.reserve;
+  }
+
   fit(box) {
     const r = this.host.getBoundingClientRect();
     const usable = Math.max(80, (r.height || 300) - this.reserve);
@@ -110,19 +124,42 @@ export class MapView {
     if (w < floor) w = floor;
     if (h < floor / aspect) h = floor / aspect;
     if (w / h < aspect) w = h * aspect; else h = w / aspect;
-    // Shift the centre up by half the covered height so the framed feature
-    // sits in the part of the map that is still showing.
-    const shift = this.reserve ? (this.reserve / 2) * (h / Math.max(usable, 1)) : 0;
-    h *= 1 + (this.reserve ? this.reserve / Math.max(usable, 1) : 0);
-    let x = cx - w / 2, y = cy - h / 2 - shift;
+    // Zoom out so the box fills the VISIBLE strip rather than the whole
+    // element, then slide the frame so the feature lands in the middle of that
+    // strip instead of the middle of the map.
+    //
+    // THE SIGN HERE IS THE WHOLE BUG. A point at user-y `cy` is drawn at the
+    // fraction (cy - y) / h down the element, so making y SMALLER moves the
+    // feature DOWN the screen. The old line subtracted the shift, which pushed
+    // the answer further underneath the very sheet it was meant to dodge —
+    // measured on a 375x812 phone, the correct island ended up 100% covered.
+    //
+    // Wanted: the feature at the centre of the strip, i.e. at fraction
+    // (H - reserve) / 2H. Solving for y gives a shift of h * reserve / 2H,
+    // ADDED.
+    const H = Math.max(r.height || 300, 1);
+    h *= H / Math.max(usable, 1);
+    const shift = (h * this.reserve) / (2 * H);
+    let x = cx - w / 2, y = cy - h / 2 + shift;
     // Keep the frame on the chart. Without this, fitting a wide spread of
     // candidates into a tall well pans hundreds of units off the top of the
     // map and most of the screen is empty sea.
     if (this.map) {
       if (w <= this.map.w) x = Math.max(0, Math.min(x, this.map.w - w));
       else x = (this.map.w - w) / 2;
-      if (h <= this.map.h) y = Math.max(0, Math.min(y, this.map.h - h));
-      else y = (this.map.h - h) / 2;
+      // Vertically, only clamp when there is something to clamp against. When
+      // the frame is TALLER than the chart the old code recentred it, which
+      // silently threw the shift away and put the answer straight back under
+      // the sheet — and a frame taller than the chart is exactly what you get
+      // for a big island like Cuba, so the bug hit the easiest questions
+      // hardest. Off the top of the chart is empty sea; that is fine.
+      // The frame may hang BELOW the chart by however much of itself is
+      // hidden: that strip is behind the sheet, so the empty sea there costs
+      // nothing. Without the slack, a feature low on the chart gets clamped
+      // straight back down under the sheet — which is what still happened to
+      // Jamaica after the sign was fixed.
+      const hidden = h * (this.reserve / H);
+      if (h <= this.map.h) y = Math.max(0, Math.min(y, this.map.h - h + hidden));
     }
     return [x, y, w, h];
   }

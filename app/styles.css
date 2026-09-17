@@ -166,6 +166,17 @@
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+/* ...but PROSE stays selectable, because switching selection off everywhere
+   also switches off the operating system's own "Speak" and "Look Up" on every
+   place name and every teaching line — which is an assistive tool, in an app
+   built for a dyslexic reader. Losing that to fix a drag is a bad trade.
+   The drag is a MOMENT, not a state, so it is handled where it happens: the
+   sheet blocks selection only while it is arriving under your finger. */
+.sheet-body, .sheet-body p, .sheet-answer, .lede, .sentence, .subject,
+.option-label, .listrow .name, .atlas-note, .prompt-sub {
+  -webkit-user-select: text; user-select: text;
+}
+.sheet.arriving, .sheet.arriving * { -webkit-user-select: none !important; user-select: none !important; }
 
 /* An explicit display beats the UA's [hidden] rule, and then a hidden thing is
    not hidden. This has bitten twice across these apps. */
