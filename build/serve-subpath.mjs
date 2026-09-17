@@ -1,13 +1,22 @@
-// Minimal static server for Landfall — no dependencies.
-// Serves /app on http://localhost:8796. localhost is a secure context, so the
-// service worker registers and the PWA installs on this machine.
+// Landfall — serve docs/ the way GitHub Pages will, at a SUBPATH.
+//
+//   node build/serve-subpath.mjs        →  http://localhost:8797/landfall/
+//
+// A project site lives at /landfall/, not at the root, and that is the one
+// difference between the local server and the real host. It is also the one
+// that breaks silently: a service worker registered from '/sw.js' scopes to the
+// whole origin and is rejected, a manifest start_url of '/' walks off the site,
+// and any absolute href loads nothing. Halyard shipped only after this exact
+// check, so Landfall gets it too.
+
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, extname } from 'node:path';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), 'app');
-const PORT = 8796;
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'docs');
+const BASE = '/landfall/';
+const PORT = 8797;
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -16,14 +25,16 @@ const TYPES = {
   '.png': 'image/png',
   '.webmanifest': 'application/manifest+json',
   '.css': 'text/css; charset=utf-8',
+  '.woff2': 'font/woff2',
 };
 
 createServer(async (req, res) => {
+  let p = decodeURIComponent(req.url.split('?')[0]);
+  if (p === '/') { res.writeHead(302, { location: BASE }).end(); return; }
+  if (!p.startsWith(BASE)) { res.writeHead(404).end('not on this project site'); return; }
+  p = p.slice(BASE.length - 1);
+  if (p.endsWith('/')) p += 'index.html';
   try {
-    let p = decodeURIComponent(req.url.split('?')[0]);
-    // Serve a directory index for any folder URL, not just the root — static
-    // hosts do this, so without it a subpath deploy behaves differently here.
-    if (p.endsWith('/')) p += 'index.html';
     const file = join(ROOT, normalize(p).replace(/^(\.\.[/\\])+/, ''));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const body = await readFile(file);
@@ -43,4 +54,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
   }
-}).listen(PORT, () => console.log(`Landfall running →  http://localhost:${PORT}`));
+}).listen(PORT, () => console.log(`docs/ served as a project site →  http://localhost:${PORT}${BASE}`));
