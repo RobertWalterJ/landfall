@@ -57,7 +57,7 @@ export function renderHero(host, { packIds, markId = null, onPick = null, visit 
 
   const width = host.clientWidth || 340;
   const n = width >= 380 ? 9 : 7;
-  const rand = rng(new Date().toISOString().slice(0, 10) + ':' + visit + ':' + packIds.join());
+  const rand = rng(new Date().toDateString() + ':' + visit + ':' + packIds.join());   // local day
 
   // Always a mix of what you know and what you do not, at every stage.
   const mastery = (c) => State.itemMastery(c.id, facetsFor ? facetsFor(c.it) : null);

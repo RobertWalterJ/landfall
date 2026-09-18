@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking, setRate } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "1.23 · Sep 18, 2026, 11:16 · 74bf845";
+const BUILD = "1.24 · Sep 18, 2026, 12:48 · 7a413f0";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -1154,16 +1154,10 @@ screens.summary = () => {
     ...(() => {
       const left = State.dueCount(items, facets);
       const when = left ? null : State.nextDue(items, facets);
-      const day = when ? new Date(when) : null;
-      const soon = day && (day - Date.now()) < 6 * 24 * 3600e3;
       const bits = [];
       if (!left) {
         bits.push(h('p', { class: 'sentence', style: 'margin-top:var(--s6)' }, 'You are up to date.'),
-          h('p', { class: 'lede' }, day
-            ? `Nothing else is due. The next place comes round ${soon
-              ? day.toLocaleDateString('en-CA', { weekday: 'long' })
-              : 'on ' + day.toLocaleDateString('en-CA', { day: 'numeric', month: 'long' })}. Anything more today is practice, and practice does not move the schedule.`
-            : 'Nothing else is due today.'));
+          h('p', { class: 'lede' }, when ? nextDueSentence(when) : 'Nothing else is due today.'));
       }
       const run = State.practiceRecord().run;
       if (run >= 3 || s.bestStreak >= 5) {
@@ -1984,3 +1978,26 @@ function showUpdate() {
 }
 
 boot();
+
+// "The next place comes round Friday" — said on a Friday, about a card due at
+// four that afternoon. Name the day by the calendar, not by the weekday of a
+// timestamp: later today, tomorrow, a weekday this week, or a date.
+function nextDueSentence(when, nowT = Date.now()) {
+  const due = new Date(when), today = new Date(nowT);
+  const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((midnight(due) - midnight(today)) / 864e5);
+  const mins = Math.round((when - nowT) / 60e3);
+  const hr = due.getHours(), mn = due.getMinutes();
+  const clock = `${hr % 12 || 12}${mn ? ':' + String(mn).padStart(2, '0') : ''} ${hr < 12 ? 'am' : 'pm'}`;
+  let at;
+  if (days <= 0) {
+    at = mins < 60 ? `in about ${Math.max(1, mins)} minute${mins === 1 ? '' : 's'}` : `later today, around ${clock}`;
+    return `Nothing else is due right now. The next place comes round ${at}. `
+      + 'Anything before then is practice, and practice does not move the schedule.';
+  }
+  if (days === 1) at = 'tomorrow';
+  else if (days < 7) at = due.toLocaleDateString('en-CA', { weekday: 'long' });
+  else at = 'on ' + due.toLocaleDateString('en-CA', { day: 'numeric', month: 'long' });
+  return `Nothing else is due today. The next place comes round ${at}. `
+    + 'Anything more today is practice, and practice does not move the schedule.';
+}

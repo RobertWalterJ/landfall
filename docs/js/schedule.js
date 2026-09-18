@@ -78,7 +78,14 @@ export const FACET_LABEL = {
 
 const now = () => Date.now();
 export const DAY = 24 * 3600e3;
-const dayKey = (t = now()) => new Date(t).toISOString().slice(0, 10);
+// The player's own calendar day, not UTC's. toISOString() rolls over at 8 pm in
+// Toronto, which filed every evening session under tomorrow: the daily record,
+// the days-running streak and "asked that way today" were all a day ahead.
+const dayKey = (t = now()) => {
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function blank() {
