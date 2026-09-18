@@ -48,6 +48,42 @@ const islandFlags = (() => {
   return out;
 })();
 
+// Population, area, position and flag file for every province, state and
+// region, joined on the Wikidata id Natural Earth already names — see
+// build/harvest-admin1.mjs. Nothing here is used until section 3 has checked it
+// against the unit's own outline.
+const admin1Data = (() => {
+  try { return JSON.parse(readFileSync(join(SRC, 'wikidata', 'admin1.json'), 'utf8')); }
+  catch { return {}; }
+})();
+
+// How far Wikidata's area may stray from the outline's before the item is taken
+// to describe some other territory. Vietnam is tighter: its provinces were
+// merged in 2025 and Wikidata followed, while Natural Earth still draws the old
+// ones, so a survivor that absorbed one small neighbour differs by only ~1.35.
+const AREA_TOLERANCE = { default: 1.6, vietnam: 1.25 };
+// Gaps that are understood and leave the population untouched. `area` says
+// which figure to show.
+// Units where a row without an id is already inside the lead row's item, so the
+// lead item alone is the whole unit. Not a general rule: a Philippine province
+// and the chartered city carved out of it look exactly like this, and there
+// the province's figure leaves the city's people out.
+const LEAD_IS_WHOLE = {
+  'AU-NSW': 'Lord Howe Island is part of New South Wales and counted in its population',
+};
+const AREA_TRUST = {
+  'US-HI': { area: 'outline', why: 'Wikidata counts the surrounding ocean' },
+  'AR-V': { area: 'outline', why: "Wikidata includes Argentina's Antarctic claim" },
+  'AR-C': { area: 'wikidata', why: 'the 1:10m outline of a 200 km² city is coarse' },
+  'PE-CAL': { area: 'wikidata', why: 'coarse outline of a small city' },
+  'SP-CEUT': { area: 'wikidata', why: 'coarse outline of a small city' },
+  'KR-28': { area: 'wikidata', why: 'coarse outline of a metropolitan city (Incheon)' },
+  'KR-26': { area: 'wikidata', why: 'coarse outline of a metropolitan city (Busan)' },
+  'KR-29': { area: 'wikidata', why: 'coarse outline of a metropolitan city (Gwangju)' },
+  'KR-27': { area: 'wikidata', why: 'coarse outline of a metropolitan city (Daegu)' },
+  'NL-FL': { area: 'wikidata', why: 'the outline takes in water Wikidata leaves out' },
+};
+
 const warn = [];
 const note = (...a) => { warn.push(a.join(' ')); };
 const load = (f) => JSON.parse(readFileSync(join(SRC, f), 'utf8'));
@@ -140,6 +176,26 @@ function inRing(pt, ring) {
     if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+// Area on the sphere, km², for a GeoJSON polygon or multipolygon (outer ring
+// minus holes). Natural Earth at 1:10m is good to a few percent, which is
+// plenty to catch a Wikidata area that belongs to something else.
+function ringKm2(ring) {
+  const R = 6371.0088, rad = Math.PI / 180;
+  let t = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [l1, p1] = ring[i], [l2, p2] = ring[i + 1];
+    t += (l2 - l1) * rad * (2 + Math.sin(p1 * rad) + Math.sin(p2 * rad));
+  }
+  return Math.abs((t * R * R) / 2);
+}
+function geomKm2(g) {
+  let a = 0;
+  for (const poly of polysOf(g)) {
+    a += ringKm2(poly[0]);
+    for (const hole of poly.slice(1)) a -= ringKm2(hole);
+  }
+  return a;
 }
 function ringCentroid(ring) {
   let x = 0, y = 0;
@@ -309,7 +365,8 @@ for (const pack of ADMIN_PACKS) {
   let units = [];
   if (pack.source === 'subunit') {
     units = sub.filter((f) => f.properties.ADM0_A3 === 'GBR' && f.properties.TYPE === 'Geo unit')
-      .map((f) => ({ name: f.properties.SUBUNIT, code: 'GB-' + f.properties.SU_A3, geoms: [f.geometry], type: 'country' }));
+      .map((f) => ({ name: f.properties.SUBUNIT, code: 'GB-' + f.properties.SU_A3, geoms: [f.geometry], type: 'country',
+        parts: [{ q: f.properties.WIKIDATAID, lbl: [f.properties.LABEL_Y, f.properties.LABEL_X], g: f.geometry }] }));
   } else {
     const rows = a1.filter((f) => f.properties.admin === pack.admin && !/water|lake/i.test(f.properties.type_en || ''));
     if (pack.source === 'region') {
@@ -388,6 +445,109 @@ for (const pack of ADMIN_PACKS) {
   }
   const ranked = [...units].sort((a, b) => b.cityPop - a.cityPop);
 
+  // ── the Wikidata join, checked ─────────────────────────────────────────
+  // A unit is one or more Natural Earth rows (a Colombian department and the
+  // capital district carved out of it; a French region and its departments),
+  // each naming its own Wikidata item. A region is looked up as its own item
+  // (harvest-admin1.mjs finds it as the common parent of its rows); anything
+  // else is a SUM over its distinct items, and a sum with a hole in it is left
+  // blank rather than reported short.
+  //
+  // Every item is checked against the outline, which is the one thing here
+  // that is certainly the right shape:
+  //   position    its coordinate lies inside the unit, or within a quarter of
+  //               a degree of the bounding box (coastal capitals).
+  //   area        within a factor of AREA_TOLERANCE of the area measured off the
+  //               outline. A bigger gap means the item describes a different
+  //               territory — a province since merged (Vietnam, 2025), split
+  //               (Papua, 2022), counted with its okrugs (Tyumen), or simply the
+  //               wrong item (Aosta Valley's id is the town) — and then its
+  //               POPULATION belongs to that other territory too, so neither is
+  //               used. AREA_TRUST lists the gaps that are understood and do
+  //               not touch the head-count.
+  //   population  not under a fifth of the largest city inside the unit —
+  //               reported only, because a metro figure spills over borders.
+  const tolerance = AREA_TOLERANCE[pack.id] || AREA_TOLERANCE.default;
+  const itemFits = (r, box, geoms) => {
+    if (!r || r.missing) return 'not harvested';
+    if (r.ll) {
+      const [lat, lon] = r.ll;
+      const inside = geoms.some((g) => polysOf(g).some((poly) => inRing([lon, lat], poly[0])));
+      const near = lat <= box.n + 0.25 && lat >= box.s - 0.25 && lon >= box.w - 0.25 && lon <= box.e + 0.25;
+      if (!inside && !near) return `"${r.label}" sits at ${lat.toFixed(2)},${lon.toFixed(2)}, outside the unit`;
+    }
+    return null;
+  };
+  for (const u of units) {
+    const parts = u.parts || (u.src || []).map((f) => ({
+      q: f.properties.wikidataid, lbl: [f.properties.latitude, f.properties.longitude], g: f.geometry,
+    }));
+    for (const pt of parts) pt.km2 = geomKm2(pt.g);
+    const geoArea = parts.reduce((t, pt) => t + pt.km2, 0);
+    u.geoArea = geoArea;
+    u.pop = null; u.popYear = null; u.wdArea = null;
+
+    // Where the unit is, for "furthest north" and for scoring a map miss: the
+    // Natural Earth label point, which is placed inside the shape by design.
+    // Several rows are averaged by their share of the area.
+    const w = parts.filter((pt) => Number.isFinite(pt.lbl[0]) && Number.isFinite(pt.lbl[1]));
+    const wSum = w.reduce((t, pt) => t + pt.km2, 0) || 1;
+    u.ll = w.length
+      ? [w.reduce((t, pt) => t + pt.lbl[0] * pt.km2, 0) / wSum, w.reduce((t, pt) => t + pt.lbl[1] * pt.km2, 0) / wSum]
+      : null;
+    const box = { n: -90, s: 90, w: 180, e: -180 };
+    for (const g of u.geoms) for (const poly of polysOf(g)) for (const [lon, lat] of poly[0]) {
+      if (lat > box.n) box.n = lat; if (lat < box.s) box.s = lat;
+      if (lon < box.w) box.w = lon; if (lon > box.e) box.e = lon;
+    }
+    u.north = box.n;
+
+    const unitName = displayName(u.name, pack.admin);
+    const trust = AREA_TRUST[u.code];
+    const say = (...m) => note('wikidata', pack.id, unitName, ...m);
+
+    // Which items stand for this unit.
+    let qs = null;
+    const candidates = pack.source === 'region' ? (admin1Data._regions || {})[pack.admin + '|' + u.name] || [] : [];
+    for (const q of candidates) {
+      const r = admin1Data[q];
+      const ratio = r?.area ? Math.max(r.area / geoArea, geoArea / r.area) : Infinity;
+      if (!itemFits(r, box, u.geoms) && r.pop && ratio <= tolerance) { qs = [q]; break; }
+    }
+    if (candidates.length && !qs) say('no region item passed the checks — falling back to its rows');
+    if (!qs) {
+      const lead = parts.filter((pt) => pt.q).sort((x, y) => y.km2 - x.km2)[0];
+      if (LEAD_IS_WHOLE[u.code] && lead) qs = [lead.q];
+      else if (!parts.length || parts.some((pt) => !pt.q)) { say('has a row with no Wikidata id — no population'); continue; }
+      else qs = [...new Set(parts.map((pt) => pt.q))];
+    }
+
+    let pop = 0, area = 0, bad = null;
+    const years = [];
+    for (const q of qs) {
+      const r = admin1Data[q];
+      const why = itemFits(r, box, u.geoms);
+      if (why) { bad = q + ' ' + why; break; }
+      if (r.pop == null) { bad = q + ' has no population'; break; }
+      pop += r.pop;
+      if (r.popYear) years.push(+r.popYear);
+      area = r.area == null || area == null ? null : area + r.area;
+    }
+    if (bad) { say(bad, '— population left blank'); continue; }
+    const ratio = area ? Math.max(area / geoArea, geoArea / area) : null;
+    if (ratio && ratio > tolerance && !trust) {
+      say(`area ${Math.round(area).toLocaleString()} km² against the outline's ${Math.round(geoArea).toLocaleString()} km² `
+        + '— a different territory; population left blank, area from the outline');
+      continue;
+    }
+    u.pop = pop;
+    u.popYear = years.length ? Math.min(...years) : null;
+    u.wdArea = trust ? (trust.area === 'wikidata' ? area : null) : (area || null);
+    if (u.cityPop > pop * 5) {
+      say(`population ${pop.toLocaleString()} is under a fifth of its largest city (${u.cityPop.toLocaleString()}) — check`);
+    }
+  }
+
   for (const u of units) {
     const name = tidy(displayName(u.name, pack.admin), null);
     const rank = ranked.indexOf(u);
@@ -413,7 +573,14 @@ for (const pack of ADMIN_PACKS) {
       cap: capTidy, caps: capTidy ? [capTidy] : [],
       t: rank < units.length / 3 ? 1 : rank < (units.length * 2) / 3 ? 2 : 3,
       pk: [pack.id],
-      x: { type: u.type, abbr: u.abbr || null, area: Math.round(u.area || 0), admin: pack.admin, code: u.code },
+      ll: u.ll ? [+u.ll[0].toFixed(3), +u.ll[1].toFixed(3)] : undefined,
+      x: {
+        type: u.type, abbr: u.abbr || null,
+        area: Math.round(u.wdArea || u.geoArea || u.area || 0),
+        pop: u.pop || null, popYear: u.popYear || null,
+        north: +u.north.toFixed(2),
+        admin: pack.admin, code: u.code,
+      },
     });
     geom.set(it.i, u.geoms);
   }

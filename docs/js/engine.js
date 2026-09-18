@@ -561,6 +561,14 @@ export const KINDS = {
         if (ranked[i - 1].ll[0] - ranked[i].ll[0] < 0.35) return null;
       }
       const answer = ranked[0];
+      // A province is not a point. "Furthest north" can mean the middle of it
+      // or the top of it, and for Quebec against Nunavut those disagree. Ask
+      // only when both readings give the same answer.
+      const tops = all.filter((o) => Number.isFinite(o.x?.north));
+      if (tops.length === all.length) {
+        const highest = tops.reduce((a, b) => (b.x.north > a.x.north ? b : a));
+        if (highest !== answer) return null;
+      }
       return {
         form: 'options',
         prompt: 'Which of these is furthest north?',

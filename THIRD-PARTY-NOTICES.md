@@ -66,7 +66,12 @@ SOFTWARE.
 ## Wikidata and Wikimedia Commons — CC0, and per-file for the flags
 
 Island capitals, areas, populations and alternative names come from Wikidata
-(`build/harvest-islands.mjs`), which is CC0 — no conditions.
+(`build/harvest-islands.mjs`), which is CC0 — no conditions. So do the
+populations and areas of the provinces, states and regions
+(`build/harvest-admin1.mjs`), joined on the Wikidata id each Natural Earth row
+already carries and checked against the Natural Earth outline before use;
+`build/report.txt` lists every unit where the check failed and the figure was
+left out. Their positions are Natural Earth's own label points.
 
 The eight island flags in `sources/island-flags/` come from Wikimedia Commons
 (`build/fetch-island-flags.mjs`): Nevis, Barbuda, Saba, Sint Eustatius,
