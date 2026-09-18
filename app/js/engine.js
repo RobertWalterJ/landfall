@@ -691,38 +691,33 @@ export function kindsFor(it, facet, ctx) {
 export function buildQuestion(it, facet, ctx) {
   let ids = shuffle(kindsFor(it, facet, ctx));
 
+  // WANTING A DIFFERENT ANGLE IS A PREFERENCE, NOT A REFUSAL.
+  //
+  // These all used to FILTER the candidate kinds, which quietly threw away the
+  // question whenever the survivors happened to be unbuildable for this item —
+  // buildQuestion returned null, the scheduler took the card back and set it
+  // aside, and a place that should have been introduced never was. It cost 30
+  // of 88 places over eight simulated weeks, and it did it invisibly.
+  //
+  // So they are scored and sorted instead. The best angle wins; every other
+  // angle is still there to fall back on.
+  const penalty = (k) => (
+    (ctx.avoid?.has(k) ? 8 : 0)                         // already asked of this card, this round
+    + (ctx.recent?.includes(k) ? 4 : 0)                 // the last question or the one before
+    + (ctx.lastKind === k ? 2 : 0)                      // how this card was asked last time
+    + (ctx.usedToday?.includes(k) ? 1 : 0)              // any angle already used on it today
+  );
   // THE FIRST TIME YOU MEET A PLACE, YOU ARE SHOWN WHERE IT IS.
   //
-  // The place facet offers three kinds — locate, shape and northernmost — and
-  // one was picked at random, so a brand-new island could open on "which of
-  // these is furthest north" against three others you had also never seen.
-  // Measured: the very first round of a fresh pack ran northernmost three
-  // times before anything else. That is a discrimination drill used as an
-  // introduction, and it is unanswerable by construction.
-  //
-  // Location is the cue everything else hangs on, so a first sighting asks for
-  // it. Shape and the comparisons come once there is something to compare.
-  if (ctx.first) {
-    const led = ids.filter((k) => k === 'locate');
-    if (led.length) ids = led.concat(ids.filter((k) => k !== 'locate'));
-  }
+  // The place facet offers locate, shape and northernmost, and one was picked
+  // at random — so a brand-new island could open on "which of these is furthest
+  // north" against three others never seen either. Measured, the first round of
+  // a fresh pack ran northernmost three times before anything else: a
+  // discrimination drill used as an introduction. Location is the cue the rest
+  // hangs on, so a first sighting asks for it.
+  const rank = (k) => (ctx.first && k === 'locate' ? -100 : 0) + penalty(k);
+  ids = ids.slice().sort((a, b) => rank(a) - rank(b));
 
-  // AND NOT THE SAME KIND TWICE RUNNING. `avoid` only ever held the kinds asked
-  // of THIS card, so nothing stopped the same kind repeating across different
-  // items: 39% of questions repeated the previous question's kind, and day two
-  // opened with four locates in a row. `recent` carries the last couple of
-  // kinds served, whatever they were about.
-  if (ctx.recent?.length) {
-    const fresh = ids.filter((k) => !ctx.recent.includes(k));
-    if (fresh.length) ids = fresh;
-  }
-  // When a card comes back inside the same round, ask it a DIFFERENT way where
-  // one exists. Repeating the identical question tests recognition of the
-  // question, not knowledge of the place.
-  if (ctx.avoid?.size) {
-    const unseen = ids.filter((k) => !ctx.avoid.has(k));
-    if (unseen.length) ids = unseen;
-  }
   for (const id of ids) {
     const q = KINDS[id].build(it, ctx);
     if (!q) continue;

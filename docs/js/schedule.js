@@ -156,6 +156,33 @@ export const State = {
   set(patch) { Object.assign(this.data.settings, patch); this.save(); },
   card(itemId, facet) { return this.data.cards[itemId + '|' + facet] || null; },
 
+  // The last question kind this card was asked, remembered ACROSS rounds.
+  //
+  // Several rounds get played in a day. The first opens new material; the ones
+  // after it have only places already met to work with, and `kindsAsked` lives
+  // on the Round, so it resets — which meant round two could ask the identical
+  // question about the identical place. Remembering one kind per card is
+  // enough to guarantee a different angle next time, and a different angle on
+  // a place you already know is the whole of what makes a later round worth
+  // playing.
+  noteKind(itemId, facet, kind) {
+    const c = this.data.cards[itemId + '|' + facet];
+    if (!c || !kind) return;
+    const today = dayKey();
+    if (c.lkDay !== today) { c.lkDay = today; c.lks = []; }
+    c.lk = kind;
+    if (!c.lks.includes(kind)) c.lks.push(kind);
+    this.save();
+  },
+
+  // Every angle this card has already been asked from TODAY. One remembered
+  // kind was not enough: with two or three kinds per facet, a third round of
+  // the day cycled straight back to the first one.
+  kindsToday(itemId, facet) {
+    const c = this.data.cards[itemId + '|' + facet];
+    return c && c.lkDay === dayKey() ? (c.lks || []) : [];
+  },
+
   // Two different questions, two different answers.
   //
   // itemMastery is the PICTURE: how far through this place you are, scored over
@@ -751,12 +778,21 @@ export class Scheduler {
         if (this.asked.has(key) || this.unaskable.has(key) || key === this.lastKey) continue;
         if ((this.held.get(key) || 0) > this.n) continue;
         const c = State.card(it.i, f);
-        if (c && c.st !== 'new') any.push({ itemId: it.i, facet: f, item: it, iv: c.iv });
+        if (c && c.st !== 'new') {
+          any.push({ itemId: it.i, facet: f, item: it, iv: c.iv, today: State.kindsToday(it.i, f).length });
+        }
       }
     }
     if (!any.length) return null;
-    any.sort((a, b) => a.iv - b.iv);
-    return this.take(any[Math.floor(Math.random() * Math.min(5, any.length))], 'practice');
+    // A PLACE NOT YET TOUCHED TODAY BEATS ONE ALREADY SEEN THIS MORNING.
+    //
+    // Several rounds get played in a day, and once the scheduled work runs out
+    // every one of them draws from the same pool. Sorting by interval alone
+    // meant the shakiest dozen came up again and again, so a fourth round was
+    // largely the first round repeated. Breadth first, then the shaky ones.
+    any.sort((a, b) => (a.today - b.today) || (a.iv - b.iv));
+    const untouched = any.filter((x) => x.today === any[0].today);
+    return this.take(untouched[Math.floor(Math.random() * Math.min(6, untouched.length))], 'practice');
   }
 
   take(card, why, depth = false) {

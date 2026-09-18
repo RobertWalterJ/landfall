@@ -601,7 +601,16 @@ for (const [id, spec] of Object.entries(MAPS)) {
       const g = clipGeoms(shifted([f.geometry], spec.shift), cbox);
       if (g.length) ctxGeoms.push(...g);
     }
-    const cp = pathFor(ctxGeoms, fit.toXY, { tol: (spec.tol ?? 0.55) * 4, minArea: (spec.minArea ?? 0.2) * 12, round: 0 });
+    // Context was thinned FOUR times harder than the places themselves, dropped
+    // any polygon under twelve times the minimum area, and rounded every
+    // coordinate to a whole unit. That is what put the gaps in Central and
+    // South America: whole stretches of coast collapsed to straight lines and
+    // the smaller headlands and islands disappeared entirely. It is background,
+    // so it can still be cheaper than the foreground — but it has to be a
+    // coastline, not an approximation of one. Settled at 3x / 6x / one decimal:
+    // the maps go from 6.9MB to 9.5MB, where 1.8x / 3x took them to 12MB for a
+    // difference you cannot see on a phone.
+    const cp = pathFor(ctxGeoms, fit.toXY, { tol: (spec.tol ?? 0.55) * 3, minArea: (spec.minArea ?? 0.2) * 6, round: 1 });
     ctx = cp?.d || '';
   }
 

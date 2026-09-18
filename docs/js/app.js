@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking, setRate } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "1.20 · Sep 17, 2026, 23:25 · 7d17abf";
+const BUILD = "1.21 · Sep 18, 2026, 03:40 · 36eedda";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -706,15 +706,36 @@ function figureFor(fig) {
 
 function optionSurface(q) {
   const box = h('div', { class: 'options' });
-  // A flag beside the name, wherever there is one and it is not the thing being
-  // tested. It identifies the option at a glance, it teaches the flag for free,
-  // and — because countries have flags and most islands do not — it quietly
-  // signals which kind of thing you are being offered.
-  const withFlags = q.kind !== 'flag-name';
+  // A FLAG MAY ONLY SAY WHAT THE LABEL ALREADY SAYS.
+  //
+  // The flag is there to identify an option at a glance, teach the flag for
+  // free, and signal country-versus-island. But on "what is the capital of
+  // Cuba?" the options are capital NAMES while the flag came from the country
+  // behind each one — so "Havana" sat next to the Cuban flag and the question
+  // answered itself for anyone who knows the flag, which is precisely what this
+  // app spends its time teaching. Same leak in principle as the central leaks()
+  // guard, one layer up in the rendering.
+  //
+  // So: show it only when the flag belongs to the thing the LABEL names. On
+  // "Havana is the capital of…" the label is "Cuba" and the flag is Cuba's,
+  // which adds nothing and stays.
+  //
+  // And it is all or none. Dropping the flag from only the offending option
+  // would make its absence the give-away instead.
+  const flagFor = (o) => {
+    if (q.kind === 'flag-name') return null;          // matching flags IS the question
+    const it = item(o.id);
+    if (!it?.fl || !DB.flags?.[it.fl]) return null;
+    const names = [it.n, ...(it.alt || [])];
+    return names.includes(o.label) ? DB.flags[it.fl] : null;
+  };
+  const withFlags = q.options.every((o) => {
+    const it = item(o.id);
+    return !it?.fl || !DB.flags?.[it.fl] || flagFor(o);
+  });
   for (const o of q.options) {
     const long = o.label.length >= 26;
-    const it = item(o.id);
-    const flag = withFlags && it?.fl && DB.flags?.[it.fl] ? DB.flags[it.fl] : null;
+    const flag = withFlags ? flagFor(o) : null;
     const btn = h('button', {
       class: 'option tap', 'data-opt': o.id,
       onclick: (e) => { if (e.target.closest('.say')) return; answer(o.id); },

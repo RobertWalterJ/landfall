@@ -7,7 +7,7 @@
 
 import { DB, inPack, loadMap, loadFlags, item, distanceKm, bearingFrom } from './data.js';
 import { buildQuestion, facetsFor, KINDS, nearMisses } from './engine.js';
-import { State, Scheduler } from './schedule.js';
+import { State, Scheduler, KNOWN_AT } from './schedule.js';
 
 export class Round {
   constructor({ packIds, length = 14, kinds = null, cruel = false, mode = 'quick', drill = null, detail = false }) {
@@ -67,10 +67,30 @@ export class Round {
       if (!it) { this.sched.reject(card); continue; }
       const seenKinds = this.kindsAsked.get(card.itemId + '|' + card.facet);
       const base = this.drill ? { ...this.ctx, cruel: true } : this.ctx;
+      const held = State.card(card.itemId, card.facet);
+
+      // LATER ROUNDS IN THE SAME DAY HAVE TO STAY WORTH PLAYING.
+      //
+      // The first round of a day opens new material; every round after it has
+      // only places already met to work with. Two things keep those interesting
+      // rather than repetitive:
+      //
+      //   a different ANGLE — the kind this card was last asked is avoided
+      //     across rounds, not just within one, so the second sighting of Saba
+      //     today is a different question from the first;
+      //   a harder SET — once a place is settled, or the round has run out of
+      //     scheduled work and is into practice, the distractors are the three
+      //     nearest rather than a comfortable spread. That is the same `cruel`
+      //     flag the drill uses, and it also earns the ease bonus that has been
+      //     sitting in answer() unpaid because nothing ever set it.
+      const settled = !!held && held.iv >= KNOWN_AT;
       const ctx = {
         ...base,
+        cruel: base.cruel || settled || card.why === 'practice',
         first: card.why === 'new',       // never met: show where it is
         recent: this.recentKinds,        // and not the same kind twice running
+        lastKind: held?.lk || null,      // nor the same kind as last time
+        usedToday: State.kindsToday(card.itemId, card.facet),
         ...(seenKinds ? { avoid: seenKinds } : {}),
       };
       const q = buildQuestion(it, card.facet, ctx);
@@ -78,7 +98,9 @@ export class Round {
       // the scheduler rather than silently spending it. See Scheduler.reject.
       if (!q) { this.sched.reject(card); continue; }
       q.why = card.why;
+      q.cruel = !!ctx.cruel;
       this.recentKinds = [q.kind, ...this.recentKinds].slice(0, 2);
+      State.noteKind(card.itemId, card.facet, q.kind);
       if (!seenKinds) this.kindsAsked.set(card.itemId + '|' + card.facet, new Set([q.kind]));
       else seenKinds.add(q.kind);
       this.current = q;

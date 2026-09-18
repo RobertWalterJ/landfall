@@ -445,7 +445,17 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .map { width: 100%; height: 100%; display: block; touch-action: none; }
 /* Context coastlines — the mainland around the region — are land, but quieter:
    they orient without competing with the islands being asked about. */
-.map .ctx { fill: var(--land-context); opacity: .5; }
+/* Context land gets a coastline too. It had none — just a flat fill at half
+   opacity — so Central and South America read as grey blobs with no edge, and
+   you could not tell where the land stopped and the sea began. On a chart the
+   coastline is the information; without it the mainland is a smudge that
+   happens to be near the islands. Quieter than a candidate's coast, because it
+   orients rather than competes. */
+.map .ctx {
+  fill: var(--land-context); fill-opacity: .62;
+  stroke: var(--coast); stroke-width: .6px; stroke-opacity: .55;
+  vector-effect: non-scaling-stroke;
+}
 .map .feat {
   fill: var(--land-context);
   stroke: var(--coast); stroke-width: .7px; vector-effect: non-scaling-stroke;
@@ -466,7 +476,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
    so the four are still drawn identically to each other. Not applied in Label
    the Map, where the whole map is in play and there is no field to dim. */
 .map.few .feat:not(.cand) { opacity: .45; }
-.map.few .ctx { opacity: .25; }
+/* The spotlight dims the FILL and leaves the coastline. Dimming the whole
+   element took the mainland's edge down with it, which is how Central and
+   South America ended up as featureless shapes behind the islands — the thing
+   you most need in order to know where the islands ARE. Stepping back is not
+   the same as disappearing. */
+.map.few .ctx { fill-opacity: .3; stroke-opacity: .42; }
 .map.few .feat.cand { filter: drop-shadow(0 1px 2.5px rgba(13, 106, 124, .45)); }
 @media (prefers-color-scheme: dark) {
   /* A dark shadow on dark water does nothing; on the night chart the halo has
@@ -492,7 +507,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* Once an answer is marked, the rest of the map gets out of the way — the two
    that matter are the one you meant and the one you hit. */
 .map:has(.feat.right) .feat:not(.right):not(.wrong) { opacity: .3; }
-.map:has(.feat.right) .ctx { opacity: .18; }
+.map:has(.feat.right) .ctx { fill-opacity: .2; stroke-opacity: .3; }
 .map:has(.feat.right) text.mlabel { font-weight: 700; }
 .map .pos { fill: none; stroke: var(--sea); stroke-width: 2.2px; stroke-dasharray: 4 3; opacity: .95;
   vector-effect: non-scaling-stroke; }
