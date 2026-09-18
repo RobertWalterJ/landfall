@@ -543,7 +543,15 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .sheet {
   position: fixed; inset: auto 0 0 0; z-index: 20;
   max-height: min(58dvh, 560px);
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;   /* the 0 is load-bearing */
+  /* FOUR children, so four tracks: grab, head, body, foot. There were only
+     three, which silently handed the minmax(0,1fr) to the HEAD and left the
+     body on `auto`. With a short verdict nothing showed; with a tall one — a
+     locator map and two teaching lines, which is most of them — the head's
+     track collapsed to 0px and the answer's own name was clipped to a sliver,
+     while the body grew past the sheet and hid its last lines behind the
+     Continue button. The minmax(0,...) is load-bearing: without the 0 a grid
+     item refuses to shrink below its content and the body will not scroll. */
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto;
   background: var(--surface);
   border-radius: var(--r-card) var(--r-card) 0 0;
   box-shadow: var(--shadow-3);

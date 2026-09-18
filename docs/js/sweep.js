@@ -171,7 +171,59 @@ export function levenshtein(a, b) {
   return prev[b.length];
 }
 
+// HOW IT SOUNDS, not how it is spelled.
+//
+// Edit distance forgives TYPOS — a dropped letter, a doubled one. It does not
+// forgive the error dyslexia actually produces, which is a phonetically
+// plausible respelling; and a phonetic attempt at a French, Spanish or Carib
+// name costs three to five edits. Measured against the real Caribbean set,
+// "Eluthra", "Tortolla", "Angwilla" and "Bonnair" all passed, while "Anteega",
+// "Beckway", "Musteek", "Mayrow", "Carrycoo", "Kurasow" and "Gwadaloop" were
+// all marked wrong. The mode's own promise is "spelling is never marked", and
+// for the one speller it was written for, it was.
+//
+// This is a consonant skeleton with the spelling conventions that vary between
+// languages folded together. It is deliberately not Double Metaphone: the
+// corpus is a few thousand place names, the failure mode that matters is a
+// FALSE accept, and every key is checked for collisions across the set before
+// it is allowed to decide anything.
+export function phonetic(raw) {
+  let s = String(raw || '')
+    .toLowerCase()
+    .replace(/ç/g, 's')                    // Curaçao sounds like an s, and the
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // accent is gone by here
+    .replace(/[''`]/g, '')
+    .replace(/s(ain)?t\.?/g, 'st')
+    .replace(/sint/g, 'st')
+    .replace(STRIP, '')
+    .replace(/[^a-z]/g, '');
+  if (!s) return '';
+  s = s
+    .replace(/(.)\1+/g, '$1')             // Tortolla -> Tortola, Barboooda -> Barboda
+    .replace(/ph/g, 'f')
+    .replace(/qu?/g, 'k')                  // Bequia / Beckway, Mustique / Musteek
+    .replace(/ck/g, 'k')
+    .replace(/x/g, 'ks')
+    .replace(/z/g, 's')
+    .replace(/c(?=[eiy])/g, 's')           // Vieques, Ponce
+    .replace(/c/g, 'k')
+    .replace(/gw/g, 'g')                   // Guadeloupe / Gwadaloop
+    .replace(/v/g, 'b')                    // Vieques / "Beeakes" — Spanish b and v
+    .replace(/h/g, '');
+  const head = s[0];
+  const rest = s.slice(1).replace(/[aeiouwy]/g, '');   // w and y ride with the vowels
+  // The trailing r goes LAST, once the vowels are out, so that Saba and
+  // "Saber", Bonaire and "Bonnair", land in the same place whichever side of
+  // the written schwa the r happens to fall.
+  const key = (head + rest).replace(/(.)\1+/g, '$1');
+  // ...but never down to a single letter: a one-character key is too lossy to
+  // be allowed to decide anything, and keysOf drops it, which would leave
+  // Mayreau/"Mayrow" with nothing to match on at all.
+  return key.length > 2 ? key.replace(/r$/, '') : key;
+}
+
 const namesOf = (it) => [it.n, ...(it.alt || [])].filter(Boolean);
+const keysOf = (it) => namesOf(it).map(phonetic).filter((k) => k.length >= 2);
 
 // How wrong the typed name is for this place: 0 is exact, Infinity is not a
 // match at all. Tolerance rises with length, because a one-letter slip in
@@ -202,10 +254,22 @@ export function matchName(input, target, setItems = []) {
 
   const mine = distanceTo(inp, target);
   if (Number.isFinite(mine)) {
-    for (const other of setItems) {
-      if (other.i === target.i) continue;
-      if (distanceTo(inp, other) <= mine) return null;
-    }
+    // A TIE IS A QUESTION, NOT A REFUSAL.
+    //
+    // The rule is right — nothing may be accepted for one place when it is at
+    // least as good an answer for another — but refusing outright marks a
+    // correct memory wrong. Sint Maarten and Saint Martin both normalise to
+    // st-ma(a)rt(e/i)n, two edits apart, so a single dropped letter in either
+    // sat one edit from BOTH and was marked wrong: the two halves of one island
+    // under two flags, the most confusable pair in the corpus, and the pair he
+    // most needs to be able to answer. Now it asks which he meant.
+    // A place that answers BETTER is not ambiguity, it is a wrong answer:
+    // typing "South Caicos" when the target is North Caicos matches South
+    // exactly, and offering a choice there would simply hand over the answer.
+    // Only a genuine TIE — equally good for two places — is a question.
+    if (setItems.some((o) => o.i !== target.i && distanceTo(inp, o) < mine)) return null;
+    const ties = setItems.filter((o) => o.i !== target.i && distanceTo(inp, o) === mine);
+    if (ties.length) return { ambiguous: [target, ...ties] };
     return { exact: mine === 0, spelling: target.n };
   }
 
@@ -217,6 +281,19 @@ export function matchName(input, target, setItems = []) {
     const others = setItems.filter((it) => it.i !== target.i
       && namesOf(it).some((n) => normalise(n).includes(inp)));
     if (!others.length) return { exact: false, spelling: target.n };
+  }
+
+  // SECOND PASS: does it SOUND right? Edit distance forgives typos; this
+  // forgives a phonetically plausible respelling, which is the error that
+  // actually turns up. Same uniqueness rule, and it has to be exclusive — the
+  // key is deliberately lossy (in a world pack it puts China and Kenya
+  // together), so anything it matches for more than one place in the set is
+  // handed back as ambiguous rather than guessed at.
+  const key = phonetic(input);
+  if (key.length >= 2 && keysOf(target).includes(key)) {
+    const rivals = setItems.filter((it) => it.i !== target.i && keysOf(it).includes(key));
+    if (!rivals.length) return { exact: false, spelling: target.n, heard: true };
+    return { ambiguous: [target, ...rivals] };
   }
   return null;
 }

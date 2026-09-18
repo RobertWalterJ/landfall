@@ -102,7 +102,10 @@ const REJECT = [
 for (const [typed, target] of REJECT) {
   const it = byName(target);
   if (!it) { fail(`test target "${target}" is not in the corpus`); continue; }
-  if (matchName(typed, it, caribbean)) fail(`"${typed}" was wrongly accepted for ${target}`);
+  const r = matchName(typed, it, caribbean);
+  // An `ambiguous` result is a question, not an acceptance — but none of these
+  // should even reach that, because each one answers some OTHER place better.
+  if (r) fail(`"${typed}" was wrongly ${r.ambiguous ? 'called ambiguous' : 'accepted'} for ${target}`);
 }
 
 // A fragment that fits more than one island in the set must not pass for any
@@ -190,6 +193,40 @@ if (leeSet && leeSet.members.some((m) => m.i === 'c:DM')) {
 // Ready sets sort to the top.
 if (sets[0] && !sets[0].ready) fail('a ready set did not sort above the unready ones');
 
+// SOUNDS RIGHT, SPELLED WRONG. Edit distance forgives typos and nothing else;
+// these are the errors dyslexia actually produces, and every one of them was
+// marked wrong before the phonetic pass existed.
+const SOUNDS = [
+  ['Anteega', 'Antigua'], ['Beckway', 'Bequia'], ['Musteek', 'Mustique'],
+  ['Mayrow', 'Mayreau'], ['Carrycoo', 'Carriacou'], ['Kurasow', 'Curaçao'],
+  ['Gwadaloop', 'Guadeloupe'], ['Saber', 'Saba'], ['Barboooda', 'Barbuda'],
+  ['Martineek', 'Martinique'], ['Domineeka', 'Dominica'],
+];
+let heard = 0;
+for (const [typed, target] of SOUNDS) {
+  const it = byName(target);
+  if (!it) { fail(`test target "${target}" is not in the corpus`); continue; }
+  const r = matchName(typed, it, caribbean);
+  if (!r) fail(`"${typed}" was rejected for ${target} — it is how the name sounds`);
+  else if (r.ambiguous) fail(`"${typed}" was called ambiguous for ${target}`);
+  else heard++;
+}
+
+// TORN, NOT WRONG. Sint Maarten and Saint Martin are two halves of one island
+// under two flags and normalise to within two edits of each other, so a single
+// slip sits equally close to both. That must ask, never mark.
+for (const [typed, a, b] of [
+  ['Sint Marten', 'Sint Maarten', 'Saint Martin'],
+  ['St Marten', 'Saint Martin', 'Sint Maarten'],
+]) {
+  const it = byName(a);
+  if (!it) { fail(`test target "${a}" is not in the corpus`); continue; }
+  const r = matchName(typed, it, caribbean);
+  if (!r?.ambiguous) fail(`"${typed}" did not offer a choice for ${a}`);
+  else if (!r.ambiguous.some((o) => o.n === b)) fail(`"${typed}" offered a choice without ${b}`);
+}
+
+console.log(`sounds-like matching: ${heard} of ${SOUNDS.length} phonetic spellings accepted, 2 near-identical pairs ask which`);
 console.log(`name matching: ${ACCEPT.length} accepted, ${REJECT.length} rejected, fragment rules checked`);
 console.log(`sets from the Caribbean pack: ${sets.length} (${sets.filter((s) => s.ready).length} ready)`);
 console.log('\n' + (fails.length ? fails.length + ' FAILURES' : 'Label the Map holds up'));

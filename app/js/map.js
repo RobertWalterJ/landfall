@@ -262,7 +262,11 @@ export class MapView {
     for (const [id, text] of entries) {
       const f = this.map.f[id];
       const w = String(text).length * size * 0.55, hh = size * 1.1;
-      const x = f.cx, y = f.cy - (f.bb ? (f.bb[3] - f.bb[1]) / 2 : 0) - size * 0.5;
+      // Clear of the feature, not touching it. The baseline sits at `y` and
+      // the text rises about 0.8 of its size above that, so half a size of
+      // clearance left the halo merging with the coastline; a full size is a
+      // gap you can see.
+      const x = f.cx, y = f.cy - (f.bb ? (f.bb[3] - f.bb[1]) / 2 : 0) - size;
       const box = [x - w / 2, y - hh, x + w / 2, y];
       if (collide && placed.some((p) => !(box[2] < p[0] || box[0] > p[2] || box[3] < p[1] || box[1] > p[3]))) continue;
       placed.push(box);

@@ -27,7 +27,7 @@ import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable
 import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking } from './speech.js';
 import * as sound from './sound.js';
 
-const BUILD = "1.16 · Sep 17, 2026, 19:43 · e5c81dd";
+const BUILD = "1.17 · Sep 17, 2026, 20:31 · 27aa91a";
 
 const app = document.getElementById('app');
 const sheetHost = document.getElementById('sheet');
@@ -569,7 +569,11 @@ function locatorFor(id) {
   const well = h('div', { class: 'mapwell locator' });
   mount(() => {
     const mv = new MapView(well);
-    mv.draw(map, { candidates: [{ id }], rings: true, labels: { [id]: it.n } });
+    // No label. The card's own heading already says the name in 24px type
+    // directly above this map, and on a locator the feature is small and
+    // centred — so the label landed on the island and across the ring it was
+    // meant to sit outside. Twice the name, once legible.
+    mv.draw(map, { candidates: [{ id }], rings: true });
     mv.setView(mv.boxOf([id], 3.2), { animate: false });
     mv.mark(id, 'right');
   });
@@ -1106,7 +1110,8 @@ screens.sweep = ({ key, dir }) => {
           btn.classList.add('on');
           listen((alts) => {
             for (const a of alts) {
-              if (matchName(a, it, sweep.order)) { named(it, a); return; }
+              const mm = matchName(a, it, sweep.order);
+              if (mm && !mm.ambiguous) { named(it, a); return; }
             }
             input.value = alts[0] || '';
           }, () => btn.classList.remove('on'));
@@ -1134,9 +1139,32 @@ screens.sweep = ({ key, dir }) => {
 
   function named(it, text) {
     const m = matchName(text, it, sweep.order);
+    if (m?.ambiguous) return askWhich(it, m.ambiguous);
     if (m) return right(it, m.exact ? null : m.spelling);
     State.answer(it.i, 'place', false, null);
     wrong(it, null);
+  }
+
+  // What you typed fits two places equally well. Refusing here marks a correct
+  // memory wrong — "Sint Marten" is one letter from Sint Maarten and one from
+  // Saint Martin, the two halves of one island under two flags — so ask rather
+  // than guess. Choosing is not a hint: both names are already in front of you
+  // and the discrimination is exactly what the sweep is for.
+  function askWhich(it, options) {
+    bar.replaceChildren(
+      h('div', { class: 'sheet-head' },
+        h('div', { style: 'flex:1;min-width:0' },
+          h('div', { class: 'sheet-answer', style: 'font-size:1.25rem' }, 'Which did you mean?'),
+          h('div', { class: 'sheet-context' }, 'That fits both.'))),
+      h('div', { class: 'options', style: 'margin-top:var(--s3)' },
+        ...options.map((o) => h('button', {
+          class: 'option tap',
+          onclick: () => {
+            if (o.i === it.i) return right(it, o.n);
+            State.answer(it.i, 'place', false, o.i);
+            wrong(it, o.i);
+          },
+        }, h('span', { class: 'option-label' }, o.n)))));
   }
 
   function right(it, spelling) {

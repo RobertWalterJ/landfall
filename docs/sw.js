@@ -14,7 +14,7 @@
 // Replaced per deploy by make-deploy.mjs. A fixed cache name means a device
 // that has the old shell can keep serving it; a new name guarantees the new
 // build installs cleanly beside the old one and the old one is then dropped.
-const VERSION = "landfall-v1-16";
+const VERSION = "landfall-v1-17";
 const SHELL = VERSION + '-shell';
 const LAZY = VERSION + '-lazy';
 const OURS = [SHELL, LAZY];
