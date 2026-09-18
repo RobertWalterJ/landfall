@@ -301,7 +301,14 @@ screens.home = () => {
 
 // ── setup ────────────────────────────────────────────────────────────────
 screens.setup = () => {
-  const chosen = new Set(activePacks());
+  // ORDERED, not a set. Everything that identifies the app keys off the FIRST
+  // pack — the home chip, the Quick Play subline, the hero's silhouettes, the
+  // region staining, the summary. Adding a pack appended it, so turning on
+  // Canadian provinces left the whole app still saying Caribbean, still
+  // turquoise, still drawing islands. The thing he just chose was invisible.
+  //
+  // The pack you just turned on leads. That is what turning it on meant.
+  let order = activePacks();
   const body = h('div', { class: 'stack' });
 
   const render = () => {
@@ -320,20 +327,27 @@ screens.setup = () => {
         if (!p) continue;
         const items = inPack(id);
         const led = State.packLedger(items, facetsOf([id]));
-        const on = chosen.has(id);
+        const on = order.includes(id);
+        const lead = order[0] === id && order.length > 1;
         body.append(h('button', {
           class: `row tap ${on ? 'on' : ''}`,
           onclick: () => {
-            if (on) chosen.delete(id); else chosen.add(id);
-            if (!chosen.size) chosen.add(id);
-            State.set({ packs: [...chosen] });
+            // Already on and not leading? Tapping promotes it rather than
+            // switching it off — wanting to work on a pack you already have is
+            // a far commoner intention than wanting to drop it, and the only
+            // other way to lead it was to turn it off and on again.
+            if (on && order[0] !== id && order.length > 1) order = [id, ...order.filter((x) => x !== id)];
+            else if (on) order = order.filter((x) => x !== id);
+            else order = [id, ...order];
+            if (!order.length) order = [id];
+            State.set({ packs: order });
             applyRegion();          // the sea changes when the pack does
             render();
           },
         },
           ring(led.pct, 'small'),
           h('span', { class: 'row-text' },
-            h('span', { class: 'row-title' }, p.name),
+            h('span', { class: 'row-title' }, p.name + (lead ? ' · leading' : '')),
             h('span', { class: 'row-sub' }, `${p.n} places · ${p.blurb}`)),
           on ? h('span', { class: 'chev', style: 'color:var(--sea)', html: ICON.tick.replace('<svg', '<svg width="16" height="16"') }) : chev()));
       }
@@ -352,7 +366,8 @@ screens.setup = () => {
 
   return h('div', { class: 'screen' },
     backBar('Packs', () => go('home')),
-    h('p', { class: 'lede' }, 'Pick what you are working on. Everything else stays in the Atlas, and nothing is lost by turning a pack off.'),
+    h('p', { class: 'lede' }, 'Pick what you are working on. Everything else stays in the Atlas, and turning a pack off keeps everything you have learned in it.'),
+    h('p', { class: 'lede muted' }, 'The one you turn on last leads: it names the home screen, draws the chart and sets the colours. Tap a pack you already have to bring it to the front.'),
     body,
     seg('Questions per round', [[10, '10'], [14, '14'], [20, '20']], 'length'),
     h('div', { style: 'margin-top:var(--s5)' },
@@ -454,6 +469,7 @@ function renderQuestion(wrap) {
 
   if (q.form === 'map') wrap.append(mapSurface(q));
   else if (q.form === 'flags') wrap.append(flagSurface(q));
+  else if (q.form === 'recall') wrap.append(recallSurface(q));
   else wrap.append(optionSurface(q));
 
   if (State.settings().speech === 'prompt' || State.settings().speech === 'both') {
@@ -750,6 +766,69 @@ function optionSurface(q) {
   return box;
 }
 
+// NAME IT — the same typing surface as Label the Map, inside a round.
+//
+// Deliberately identical in behaviour to the sweep's name prompt: spellcheck
+// left ON, voice offered as an equal, the matcher generous about accents,
+// Saint/St/Sint, a dropped letter and how the word sounds, and a genuine tie
+// asking which rather than marking. Getting it nearly right is getting it
+// right, and the spelling is shown quietly afterwards.
+function recallSurface(q) {
+  const target = item(q.correctId);
+  const pool = round?.pool || [];
+  const box = h('div', { style: 'margin-top:var(--s4)' });
+  const input = h('input', {
+    class: 'search', type: 'text', autocomplete: 'off', autocapitalize: 'words',
+    placeholder: 'What is it called?',
+    onkeydown: (e) => { if (e.key === 'Enter') submit(); },
+  });
+  const note = h('p', { class: 'prompt-sub', style: 'margin-top:var(--s2)' },
+    'Spell it however you like. Say it instead if that is easier.');
+
+  const submit = () => {
+    const v = input.value.trim();
+    if (!v) return;
+    const m = matchName(v, target, pool);
+    if (m?.ambiguous) {
+      // Two places answer equally well. Ask, exactly as a sweep does.
+      box.replaceChildren(
+        h('p', { class: 'sentence' }, 'Which did you mean?'),
+        h('div', { class: 'options', style: 'margin-top:var(--s3)' },
+          ...m.ambiguous.map((o) => h('button', {
+            class: 'option tap',
+            onclick: () => answer(o.i === target.i ? q.correctId : o.i),
+          }, h('span', { class: 'option-label' }, o.n)))));
+      return;
+    }
+    if (m) { q.spelling = m.exact ? null : m.spelling; answer(q.correctId); }
+    else answer(null);
+  };
+
+  const row = h('div', { style: 'display:flex;gap:var(--s2)' }, input);
+  if (listenAvailable()) {
+    row.append(h('button', {
+      class: 'say tap small', 'aria-label': 'Say the name',
+      onclick: (e) => {
+        const btn = e.currentTarget;
+        btn.classList.add('on');
+        listen((alts) => {
+          for (const a of alts) {
+            const mm = matchName(a, target, pool);
+            if (mm && !mm.ambiguous) { q.spelling = mm.exact ? null : mm.spelling; answer(q.correctId); return; }
+          }
+          input.value = alts[0] || '';
+          note.textContent = alts[0] ? `I heard "${alts[0]}" — tap Check, or edit it.` : 'I did not catch that.';
+        }, () => btn.classList.remove('on'));
+      },
+      html: svg('<path d="M12 4.5a2.6 2.6 0 0 1 2.6 2.6v4.4a2.6 2.6 0 0 1-5.2 0V7.1A2.6 2.6 0 0 1 12 4.5z"/><path d="M6.5 11.3a5.5 5.5 0 0 0 11 0M12 16.8V20"/>'),
+    }));
+  }
+  row.append(h('button', { class: 'btn tap', style: 'width:auto;padding:0 var(--s5);min-height:48px', onclick: submit }, 'Check'));
+  box.append(row, note);
+  mount(() => input.focus({ preventScroll: true }));
+  return box;
+}
+
 function flagSurface(q) {
   const box = h('div', { class: 'flags' });
   for (const o of q.options) {
@@ -843,6 +922,8 @@ function showVerdict(v, q) {
   // only one of them means you do not know where the place is. Said the way a
   // chart would say it: kilometres and a bearing, so it is a correction rather
   // than a scolding.
+  // Nearly right is right, and the spelling is shown without a red mark.
+  if (q.spelling) lines.push(`Counted. It is spelled ${q.spelling}.`);
   if (v.missKm != null) lines.push(missSentence(v.missKm, v.missDir, item(v.chosen)?.n));
   if (v.explain) lines.push(v.explain);
   if (v.note) lines.push(v.note);

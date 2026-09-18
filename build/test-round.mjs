@@ -109,6 +109,7 @@ async function simulate(packId, days, perDay) {
       // — but never as the same question twice running, and never more than
       // twice in a round. (A facet with only two kinds cannot do better.)
       if (lastKey === key) fail(`${packId}: the same question ran back to back (${key})`);
+      if (q.form === 'recall' && !q.correctId) fail(`${packId}: a recall question had nothing to match against`);
       seenThisRound.set(key, (seenThisRound.get(key) || 0) + 1);
       // Legitimate: first sight, +3, +9, plus a requeue if it is missed again.
       if (seenThisRound.get(key) > 4) fail(`${packId}: the same question ran ${seenThisRound.get(key)}x in one round (${key})`);
@@ -116,9 +117,11 @@ async function simulate(packId, days, perDay) {
       const right = willGetRight(q.itemId, q.facet);
       const choice = right
         ? q.correctId
-        : (q.form === 'map'
-          ? q.map.candidates.find((c) => !c.correct).id
-          : q.options.find((o) => !o.correct).id);
+        // A free-recall miss is a blank, not a wrong option: there is nothing
+        // to pick, so it is graded as null exactly as the app does.
+        : (q.form === 'recall' ? null
+          : q.form === 'map' ? q.map.candidates.find((c) => !c.correct).id
+            : q.options.find((o) => !o.correct).id);
       round.answer(choice);
       clock += 25e3;                    // 25 seconds a question
     }

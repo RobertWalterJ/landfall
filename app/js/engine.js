@@ -152,6 +152,40 @@ export const KINDS = {
     },
   },
 
+  // NAME IT. No options — the shape, and you say what it is.
+  //
+  // Everything else in this file is four-option recognition, which is a real
+  // skill but not the one he is here for: "I could name every island in the
+  // Leewards" is production, not recognition. Label the Map has the only
+  // production channel in the app and it is narrow — one ready set on day one,
+  // two at three weeks — so for the first month nearly all retrieval practice
+  // is picking from four.
+  //
+  // Offered only once a place is KNOWN, so it is a demonstration rather than a
+  // blank stare, and graded by the same generous matcher as Label the Map:
+  // accents, Saint/St/Sint, a dropped letter, and how the name SOUNDS. The
+  // ease bonus for free recall has been sitting in session.js unpaid because
+  // nothing set `recall`; this sets it.
+  'name-it': {
+    facet: 'place', form: 'recall', label: 'Name it',
+    can: (it, ctx) => !!mapFor(it, ctx) && hasShape(it, ctx) && !!ctx.producible,
+    build(it, ctx) {
+      const mapId = mapFor(it, ctx);
+      if (!mapId) return null;
+      return {
+        form: 'recall',
+        recall: true,
+        prompt: 'What is this ' + kindLabel(it) + '?',
+        frame: 'Name this ' + kindLabel(it), subject: null,
+        speak: 'What is this ' + kindLabel(it) + '?',
+        figure: { type: 'shape', mapId, id: it.i },
+        options: [],
+        correctId: it.i,
+        answerLabel: it.n,
+      };
+    },
+  },
+
   'flag-name': {
     facet: 'flag', form: 'options', label: 'Whose flag?',
     can: (it) => !!it.fl,
@@ -721,7 +755,10 @@ export function buildQuestion(it, facet, ctx) {
   for (const id of ids) {
     const q = KINDS[id].build(it, ctx);
     if (!q) continue;
-    if (q.form !== 'map') {
+    if (q.form === 'recall') {
+      // No options to check. The answer is whatever he says it is, judged by
+      // matchName against the round's pool.
+    } else if (q.form !== 'map') {
       const correct = q.options.filter((o) => o.correct);
       if (correct.length !== 1 || q.options.length !== 4) continue;
       if (new Set(q.options.map((o) => o.label)).size !== 4) continue;

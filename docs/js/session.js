@@ -7,7 +7,7 @@
 
 import { DB, inPack, loadMap, loadFlags, item, distanceKm, bearingFrom } from './data.js';
 import { buildQuestion, facetsFor, KINDS, nearMisses } from './engine.js';
-import { State, Scheduler, KNOWN_AT } from './schedule.js';
+import { State, Scheduler, KNOWN_AT, cardDownPat } from './schedule.js';
 
 export class Round {
   constructor({ packIds, length = 14, kinds = null, cruel = false, mode = 'quick', drill = null, detail = false }) {
@@ -84,9 +84,19 @@ export class Round {
       //     flag the drill uses, and it also earns the ease bonus that has been
       //     sitting in answer() unpaid because nothing ever set it.
       const settled = !!held && held.iv >= KNOWN_AT;
+      // Free recall opens at DOWN PAT, not at known. Gating it on a 21-day
+      // interval made it unreachable in practice: measured over ten weeks, just
+      // one of six hundred place questions was asked of a card that far along,
+      // because a card at 21 days is by definition one you hardly ever see.
+      // Down pat — three right in a row — is the point at which you can
+      // recognise it reliably, which is exactly when producing it from nothing
+      // stops being a blank stare and starts being worth doing.
+      const producible = cardDownPat(held);
       const ctx = {
         ...base,
         cruel: base.cruel || settled || card.why === 'practice',
+        settled,                         // harder distractors once it is known
+        producible,                      // free recall once it is down pat
         first: card.why === 'new',       // never met: show where it is
         recent: this.recentKinds,        // and not the same kind twice running
         lastKind: held?.lk || null,      // nor the same kind as last time
