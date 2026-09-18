@@ -20,7 +20,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { COUNTRY_PACKS, CARIBBEAN, ADMIN_PACKS, CITY_PACKS, RENAMES, CAPITAL_FIXES, CITY_FIXES } from './curated/packs.mjs';
+import { COUNTRY_PACKS, CARIBBEAN, ADMIN_PACKS, CITY_PACKS, RENAMES, CAPITAL_FIXES, CITY_FIXES, ADMIN1_NAME } from './curated/packs.mjs';
 import { ISLANDS } from './curated/islands.mjs';
 import { GROUPS } from './curated/groups.mjs';
 import { MAPS } from './curated/maps.mjs';
@@ -327,12 +327,46 @@ for (const pack of ADMIN_PACKS) {
         src: fs,
       }));
     } else {
-      units = rows.map((f) => ({
-        name: f.properties.name, code: f.properties.iso_3166_2 || (pack.id + '-' + f.properties.adm1_code),
-        geoms: [f.geometry], type: f.properties.type_en || pack.unit,
-        area: f.properties.area_sqkm || 0, src: [f],
-        abbr: f.properties.postal || f.properties.abbrev || null,
-      }));
+      // ONE CODE, ONE UNIT — and say so when rows have to be merged.
+      //
+      // Natural Earth gives several rows the same iso_3166_2 wherever a city is
+      // carved out of the province around it: PH-DAV is Davao del Norte AND
+      // Davao, CO-CUN is Cundinamarca AND Bogotá, PE-LIM is Lima the department
+      // AND Lima the province. PH-MNL is all SEVENTEEN cities of Metro Manila.
+      // Keying items by that code and letting the last write win silently lost
+      // 35 Philippine provinces — Pampanga, Pangasinan, Palawan, Benguet,
+      // Isabela, Leyte, Quezon and more — and left the survivor wearing a
+      // city's name. It was the one place in this build that guessed instead of
+      // reporting.
+      //
+      // Now the rows are merged so no land is lost, the name comes from the row
+      // that actually matches the pack's unit (the province, not the city
+      // inside it), and every merge is reported.
+      const byCode = new Map();
+      for (const f of rows) {
+        const code = f.properties.iso_3166_2 || (pack.id + '-' + f.properties.adm1_code);
+        if (!byCode.has(code)) byCode.set(code, []);
+        byCode.get(code).push(f);
+      }
+      units = [...byCode].map(([code, fs]) => {
+        const unitish = (f) => new RegExp(pack.unit.replace(/s$/, ''), 'i').test(f.properties.type_en || '');
+        const ranked = fs.slice().sort((a, b) =>
+          (unitish(b) - unitish(a)) || ((b.properties.area_sqkm || 0) - (a.properties.area_sqkm || 0)));
+        const lead = ranked[0];
+        const name = ADMIN1_NAME[code] || lead.properties.name;
+        if (fs.length > 1) {
+          note('admin1', pack.id, `${code} covers ${fs.length} Natural Earth rows `
+            + `(${fs.map((f) => f.properties.name).join(', ')}) — merged as "${name}"`);
+        }
+        return {
+          name, code,
+          geoms: fs.map((f) => f.geometry),
+          type: lead.properties.type_en || pack.unit,
+          area: fs.reduce((t, f) => t + (f.properties.area_sqkm || 0), 0),
+          src: fs,
+          abbr: lead.properties.postal || lead.properties.abbrev || null,
+        };
+      });
     }
   }
   units = units.filter((u) => u.name && !(pack.drop || []).includes(u.name));

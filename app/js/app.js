@@ -496,20 +496,39 @@ function shapeChip(it) {
 // zero for the first three weeks however well you play, and it reads as "you
 // got nothing right". The sentence now reports what is actually true today and
 // only makes the stronger claim once the stronger claim is available.
+// The ladder, said in order and in plain words: met, then down pat, then known.
+//
+// It used to lead with whichever rung was highest and then bolt the rest on as
+// a fragment — "You have 14 of 93 in Caribbean down pat." followed by "Met 19.
+// Down pat is three right in a row; naming one for good means still having it
+// in three weeks." Two counts in the wrong order, a sentence with no subject,
+// a semicolon, and a definition of the rung you have already passed instead of
+// the one you are working towards.
+//
+// Now: where you are, then what the next rung takes. Always in ladder order,
+// because you meet a place before you get it down pat and you get it down pat
+// before you can be said to know it.
 function ledgerSentence(ledger, packName) {
-  if (ledger.itemsKnown > 0) {
-    return [`You can name ${ledger.itemsKnown} of ${ledger.items} in ${packName}.`,
-      `${ledger.itemsPat} down pat · ${ledger.itemsMet} met · ${ledger.secure} facets secure.`];
+  const { items, itemsMet: met, itemsPat: pat, itemsKnown: known } = ledger;
+  if (known > 0) {
+    return [
+      `You can name ${known} of the ${items} places in ${packName}.`,
+      `You have met ${met} so far, and ${pat} are down pat. "Can name" means you still had it three weeks later.`,
+    ];
   }
-  if (ledger.itemsPat > 0) {
-    return [`You have ${ledger.itemsPat} of ${ledger.items} in ${packName} down pat.`,
-      `Met ${ledger.itemsMet}. Down pat is three right in a row; naming one for good means still having it in three weeks.`];
+  if (pat > 0) {
+    return [
+      `You have met ${met} of the ${items} places in ${packName}, and ${pat} ${pat === 1 ? 'is' : 'are'} down pat.`,
+      'Down pat means three right in a row. A place counts as properly known once you can still name it three weeks later.',
+    ];
   }
-  if (ledger.itemsMet > 0) {
-    return [`You have met ${ledger.itemsMet} of ${ledger.items} in ${packName}.`,
-      'Get one right three times running and it is down pat.'];
+  if (met > 0) {
+    return [
+      `You have met ${met} of the ${items} places in ${packName}.`,
+      'Get one right three times running and it is down pat.',
+    ];
   }
-  return [`${ledger.items} places in ${packName}.`, 'None met yet.'];
+  return [`${items} places in ${packName}.`, 'None met yet. A round will start you on the first few.'];
 }
 
 // ── teaching the answer ──────────────────────────────────────────────────
@@ -955,6 +974,12 @@ screens.summary = () => {
       h('div', { class: 'bubble' },
         h('div', { class: 'stat' }, h('span', { class: 'n' }, s.newItems)),
         h('div', { class: 'label', style: 'margin-top:4px' }, 'new places'))),
+    // First sightings are not in the score, so say so rather than leave the
+    // denominator quietly short of the number of questions answered.
+    s.firstSeen
+      ? h('p', { class: 'lede muted' },
+        `${s.firstSeen} ${s.firstSeen === 1 ? 'place was' : 'places were'} new, so ${s.firstSeen === 1 ? 'it is' : 'they are'} not in the score — you had not seen ${s.firstSeen === 1 ? 'it' : 'them'} before.`)
+      : null,
     ...(() => {
       const [head, sub] = ledgerSentence(ledger, p.short);
       return [
@@ -1675,7 +1700,7 @@ screens.settings = () => {
     h('p', { class: 'lede muted' },
       'Version, when it was built, and the change it came from. The app checks for a newer one each time you open it.'),
     h('p', { class: 'lede', style: 'margin-top:var(--s3)' },
-      ` Shapes and places from Natural Earth (public domain) and world-countries (ODbL); flags from flag-icons (MIT). Island names, regional groupings and corrections are hand-checked — see build/report.txt for everything the build could not resolve.`),
+      ` Shapes and places from Natural Earth (public domain) and world-countries (ODbL). Flags from flag-icons (MIT). Island capitals, areas, populations and the eight island flags from Wikidata and Wikimedia Commons (CC0). Contains information from world-countries, made available under the ODbL. Island names, regional groupings and corrections are hand-checked — see build/report.txt for everything the build could not resolve.`),
     h('button', {
       class: 'btn quiet tap', style: 'margin-top:var(--s6)',
       onclick: () => {

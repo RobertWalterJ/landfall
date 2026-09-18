@@ -67,6 +67,14 @@ for (const out of targets) {
   const sw = join(out, 'sw.js');
   writeFileSync(sw, readFileSync(sw, 'utf8').replace("'landfall-v1-dev'", JSON.stringify('landfall-v1-' + build)));
   writeFileSync(join(out, '.nojekyll'), '');
+  // The notices have to travel with the thing they cover. ODbL asks for them on
+  // the Produced Work, and MIT asks for its notice to accompany the flags —
+  // which are deployed, while the licence text was sitting in sources/ and
+  // was not.
+  for (const f of ['LICENSE', 'THIRD-PARTY-NOTICES.md']) {
+    try { writeFileSync(join(out, f), readFileSync(join(ROOT, f), 'utf8')); }
+    catch { console.error('deploy refused: ' + f + ' is missing'); process.exit(1); }
+  }
 }
 
 // Make sure everything the service worker precaches actually exists.

@@ -107,7 +107,16 @@ export const ADMIN_PACKS = [
     blurb: 'Six states and two mainland territories.' },
   { id: 'germany', admin: 'Germany', name: 'German states', short: 'Germany',
     unit: 'Land', map: 'germany', tier: 2, source: 'admin1', blurb: 'The sixteen Bundesländer.' },
+  // Crimea and Sevastopol are dropped. Natural Earth files them under Russia
+  // because it follows administration on the ground, but they are Ukrainian:
+  // that is Ukraine's position, the UN General Assembly's, and almost every
+  // state's. Leaving them in this pack would have the app generate "which
+  // country is Crimea in?" and mark "Ukraine" wrong — asserting a position it
+  // takes nowhere else, on the one fact where getting it wrong is not a
+  // rounding error. They are not Ukrainian oblasts in any pack here either,
+  // because the app does not cover Ukraine's oblasts at all yet.
   { id: 'russia', admin: 'Russia', name: 'Russian federal subjects', short: 'Russia',
+    drop: ['Crimea', 'Sevastopol'],
     unit: 'federal subject', map: 'russia', tier: 3, source: 'admin1', blurb: 'Oblasts, republics, krais and okrugs — the biggest set here.' },
   { id: 'argentina', admin: 'Argentina', name: 'Argentine provinces', short: 'Argentina',
     unit: 'province', map: 'argentina', tier: 3, source: 'admin1', blurb: 'Twenty-three provinces and Buenos Aires.' },
@@ -254,7 +263,52 @@ export const CITY_FIXES = {
   'Hulin': 'Hulin',
 };
 
+// FACTS THE APP MUST NOT ASSERT.
+//
+// The corpus already refuses to make a quiz answer out of a contested GROUP
+// membership — Dominica as Leeward or Windward, Barbados in the Windwards. The
+// same discipline is owed to contested SOVEREIGNTY, and it was missing: Crimea
+// and Sevastopol sit in the Russia pack with Russia as their parent, so the
+// engine would happily generate "Which country is Crimea in?" and mark
+// "Ukraine" wrong. That is the app taking a side, in the one place it takes
+// sides nowhere else.
+//
+// These are not removed — a place you cannot ask about is still a place worth
+// seeing on a chart, and the Atlas says what the argument is. They are only
+// barred from being the answer to the fact that is in dispute.
+//
+// `skip` names the facets that must never become questions for this item.
+export const DISPUTED = {
+  'c:IL': { skip: ['capital'], note: 'Israel designates Jerusalem its capital and its government sits there. Most states do not recognise that designation and keep their embassies in Tel Aviv; the status of the city is one of the central questions of the conflict. The app does not take a position, so it does not ask.' },
+  'c:PS': { skip: ['capital'], note: 'Palestine claims East Jerusalem as its capital; the Palestinian Authority is seated in Ramallah. Unresolved.' },
+  'c:EH': { skip: ['parent', 'capital'], note: 'Western Sahara is a non-self-governing territory. Most of it is administered by Morocco, which claims it; the Polisario Front claims it as the Sahrawi Arab Democratic Republic and holds the eastern strip. El Aaiún is the Moroccan-administered seat, Tifariti the Sahrawi one.' },
+  'c:TW': { skip: ['parent'], note: 'Taiwan governs itself with its own elections, currency and armed forces. The People’s Republic of China claims it as a province; most states maintain unofficial relations rather than recognition. Listed here as its own entry, which is a choice, not a settled fact.' },
+  'c:XK': { skip: ['parent'], note: 'Kosovo declared independence in 2008 and is recognised by about half of UN members. Serbia does not recognise it.' },
+};
+
+// Where Natural Earth's iso_3166_2 covers several rows, the merged unit needs
+// the name of the thing the CODE actually denotes — which is not always any of
+// the row names. PH-MNL is the National Capital Region, and none of its
+// seventeen rows says so.
+export const ADMIN1_NAME = {
+  'PH-MNL': 'Metro Manila',
+};
+
+// Capitals Natural Earth or world-countries gets wrong, checked by hand.
+// Several of these are a national capital sitting inside a region that has its
+// own, separate seat — the commonest way this goes wrong.
 export const CAPITAL_FIXES = {
+  'AR-C': 'Buenos Aires',        // was La Plata, which is the capital of the PROVINCE
+  'PE-CAL': 'Callao',            // was Puno, about 1,200 km away
+  'KR-41': 'Suwon',              // was Seoul, which is a separate special city
+  'ZA-GT': 'Johannesburg',       // was Pretoria, the national administrative capital
+  'ET-AA': 'Addis Ababa',        // was Harar
+  'ET-AM': 'Bahir Dar',          // was Dessie
+  'VN-73': 'Vị Thanh',           // was Cần Thơ, a separate municipality
+  'KR-47': 'Andong',             // moved from Daegu in 2016
+  'KR-46': 'Muan',               // moved from Gwangju in 2005
+  'NZ-MWT': 'Palmerston North',  // was Whanganui
+
   'CA-NU': 'Iqaluit',
   'CA-NT': 'Yellowknife',
   'CA-YT': 'Whitehorse',
