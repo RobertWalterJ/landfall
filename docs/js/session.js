@@ -177,7 +177,11 @@ export class Round {
       chosen: choiceId,
       label: q.answerLabel,
       explain: q.explain || null,
-      note: item(q.correctId)?.note || item(q.itemId)?.note || null,
+      // The sheet is headed with the ANSWER's name, so an unlabelled note must
+      // be about the answer. It used to fall back to the note of the place the
+      // question was built around, which put "Colombian, 750 km from Colombia"
+      // under Great Inagua in the Bahamas. A borrowed note now says whose it is.
+      note: noteFor(q),
       missKm, missDir,
     };
   }
@@ -202,4 +206,11 @@ export class Round {
       mapMisses: this.results.filter((r) => r.missKm != null).map((r) => r.missKm),
     };
   }
+}
+
+function noteFor(q) {
+  const answer = item(q.correctId), subject = item(q.itemId);
+  if (answer?.note) return answer.note;
+  if (subject?.note && subject !== answer) return `${subject.n}: ${subject.note}`;
+  return null;
 }
