@@ -102,7 +102,19 @@ function speakBtn(text, { klass = 'say tap small' } = {}) {
 const screens = {};
 let current = null;
 
-function go(name, params = {}) {
+// THE SYSTEM BACK GESTURE HAS TO WORK.
+//
+// There was no history integration at all — no pushState, no popstate — so on
+// an installed PWA the swipe-from-the-edge that is the primary back affordance
+// on Android did not go back a screen, it EXITED THE APP. From the Atlas, from
+// a sweep, from the middle of a round. That is the cheapest large fix in the
+// whole audit.
+//
+// Each screen pushes one entry; going back pops to the previous one and
+// re-renders it without pushing again, or the stack doubles on every step.
+let popping = false;
+
+function go(name, params = {}, { replace = false } = {}) {
   stopSpeech();
   current = { name, params };
   document.body.dataset.screen = name;
@@ -110,7 +122,19 @@ function go(name, params = {}) {
   const node = screens[name](params);
   app.replaceChildren(node);
   window.scrollTo(0, 0);
+  if (popping) return;
+  const entry = { name, params };
+  try {
+    if (replace || !history.state) history.replaceState(entry, '');
+    else history.pushState(entry, '');
+  } catch { /* a history that will not take an entry is not worth failing over */ }
 }
+
+window.addEventListener('popstate', (e) => {
+  const to = e.state && screens[e.state.name] ? e.state : { name: 'home', params: {} };
+  popping = true;
+  try { go(to.name, to.params || {}); } finally { popping = false; }
+});
 
 // ── shared bits ──────────────────────────────────────────────────────────
 const activePacks = () => State.settings().packs.filter((p) => DB.packs.has(p));
@@ -623,7 +647,18 @@ function locatorFor(id) {
     // centred — so the label landed on the island and across the ring it was
     // meant to sit outside. Twice the name, once legible.
     mv.draw(map, { candidates: [{ id }], rings: true });
-    mv.setView(mv.boxOf([id], 3.2), { animate: false });
+    // A CONSTANT PAD IS WRONG AT BOTH ENDS. Features on the Caribbean map span
+    // 0.6 to 320 units — a 500x range — so a pad of 3.2 framed Saba in 7 units
+    // of blank ocean with nothing to place it against, and Cuba in 2,374 units,
+    // which is nearly three times the whole map: North America and West Africa
+    // with the Bahamas as specks. Clamp the span instead.
+    const box = mv.boxOf([id], 3.2);
+    const w = box[2] - box[0], hh = box[3] - box[1];
+    const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
+    const span = Math.max(w, hh);
+    const want = Math.max(55, Math.min(span, (map.w || 860) * 0.45));
+    const k = want / Math.max(span, 0.001);
+    mv.setView([cx - (w * k) / 2, cy - (hh * k) / 2, cx + (w * k) / 2, cy + (hh * k) / 2], { animate: false });
     mv.mark(id, 'right');
   });
   return well;
@@ -948,7 +983,7 @@ function leaveRound() {
 screens.summary = () => {
   const s = round ? round.summary() : { asked: 0, right: 0, missed: [], bestStreak: 0, newItems: 0 };
   const packIds = activePacks();
-  const { ledger } = packStats(packIds);
+  const { items, ledger, facets } = packStats(packIds);
   const p = DB.packs.get(packIds[0]);
   if (s.asked && s.right === s.asked) sound.fanfare();
 
@@ -1008,11 +1043,47 @@ screens.summary = () => {
     })(),
     seen.size ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'What slipped'), missed) : null,
-    h('button', { class: 'btn tap', style: 'margin-top:var(--section)', onclick: () => startRound({ mode: 'quick' }) }, 'Another round'),
+    // THE ROUND HAS TO CLOSE, NOT JUST STOP.
+    //
+    // It ended on "Another round" whatever had happened, which invites exactly
+    // the grinding the scheduler exists to prevent — and the app knew it was
+    // up to date and never said so. It also computes a consecutive-day run and
+    // a best streak every round and showed neither.
+    ...(() => {
+      const left = State.dueCount(items, facets);
+      const when = left ? null : State.nextDue(items, facets);
+      const day = when ? new Date(when) : null;
+      const soon = day && (day - Date.now()) < 6 * 24 * 3600e3;
+      const bits = [];
+      if (!left) {
+        bits.push(h('p', { class: 'sentence', style: 'margin-top:var(--s6)' }, 'You are up to date.'),
+          h('p', { class: 'lede' }, day
+            ? `Nothing else is due. The next place comes round ${soon
+              ? day.toLocaleDateString('en-CA', { weekday: 'long' })
+              : 'on ' + day.toLocaleDateString('en-CA', { day: 'numeric', month: 'long' })}. Anything more today is practice, and practice does not move the schedule.`
+            : 'Nothing else is due today.'));
+      }
+      const run = State.practiceRecord().run;
+      if (run >= 3 || s.bestStreak >= 5) {
+        const parts = [];
+        if (run >= 3) parts.push(`${run} days running`);
+        if (s.bestStreak >= 5) parts.push(`a best run of ${s.bestStreak} in a row this round`);
+        bits.push(h('p', { class: 'lede muted' }, parts.join(', ') + '.'));
+      }
+      return bits;
+    })(),
+    h('button', {
+      class: `btn tap ${State.dueCount(items, facets) ? '' : 'quiet'}`,
+      style: 'margin-top:var(--section)',
+      onclick: () => startRound({ mode: 'quick' }),
+    }, State.dueCount(items, facets) ? 'Another round' : 'Practise anyway'),
     // Nothing due is not a dead end. A sweep is a better use of the same
     // minutes than churning cards ahead of schedule, and it is the mode he
-    // actually wants.
-    h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('label') }, 'Label the map instead'),
+    // actually wants — but it is only offered once a set is actually ready,
+    // because "Nothing is ready yet" is a poor reward for finishing a round.
+    sweepSets(packIds, facets).some((x) => x.ready)
+      ? h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('label') }, 'Label the map instead')
+      : null,
     h('button', { class: 'btn quiet tap', style: 'margin-top:var(--stack)', onclick: () => go('home') }, 'Home'));
 };
 
@@ -1106,8 +1177,18 @@ screens.sweep = ({ key, dir }) => {
   if (!set) return screens.label();
   const map = DB.maps.get(set.mapId);
   if (!map) {
-    loadMap(set.mapId).then(() => go('sweep', { key, dir }));
-    return h('div', { class: 'screen' }, h('p', { class: 'lede' }, 'Unfolding the map…'));
+    // With a catch. Only two maps are precached and the other 41 are fetched on
+    // demand, so a pack opened at home and a sweep started on the train stuck
+    // on "Unfolding the map…" for ever, with no back button and no explanation.
+    loadMap(set.mapId).then(() => go('sweep', { key, dir })).catch(() => {
+      app.replaceChildren(h('div', { class: 'screen' },
+        backBar('Label the Map', () => go('label')),
+        h('p', { class: 'sentence' }, 'That map is not on the phone yet.'),
+        h('p', { class: 'lede' }, 'Maps are fetched the first time you use them, so this one needs a connection. It will be here for good once it has arrived.')));
+    });
+    return h('div', { class: 'screen' },
+      backBar('Label the Map', () => go('label')),
+      h('p', { class: 'lede' }, 'Unfolding the map…'));
   }
 
   // The first sweep of a set runs in geographic order — north to south along

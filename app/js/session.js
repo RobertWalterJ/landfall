@@ -27,6 +27,7 @@ export class Round {
     }
     this.preferMap = DB.packs.get(this.packIds[0])?.map || null;
     this.ctx = { pool: this.pool, cruel, kinds, detail, preferMap: this.preferMap };
+    this.recentKinds = [];
     this.sched = new Scheduler(this.pool, (it) => facetsFor(it, this.ctx),
       { groupById: DB.groups, length: this.length });
     this.asked = [];
@@ -65,12 +66,19 @@ export class Round {
       const it = card.item || item(card.itemId);
       if (!it) { this.sched.reject(card); continue; }
       const seenKinds = this.kindsAsked.get(card.itemId + '|' + card.facet);
-      const ctx = this.drill ? { ...this.ctx, cruel: true } : this.ctx;
-      const q = buildQuestion(it, card.facet, seenKinds ? { ...ctx, avoid: seenKinds } : ctx);
+      const base = this.drill ? { ...this.ctx, cruel: true } : this.ctx;
+      const ctx = {
+        ...base,
+        first: card.why === 'new',       // never met: show where it is
+        recent: this.recentKinds,        // and not the same kind twice running
+        ...(seenKinds ? { avoid: seenKinds } : {}),
+      };
+      const q = buildQuestion(it, card.facet, ctx);
       // No question could be built for this card right now — hand it back to
       // the scheduler rather than silently spending it. See Scheduler.reject.
       if (!q) { this.sched.reject(card); continue; }
       q.why = card.why;
+      this.recentKinds = [q.kind, ...this.recentKinds].slice(0, 2);
       if (!seenKinds) this.kindsAsked.set(card.itemId + '|' + card.facet, new Set([q.kind]));
       else seenKinds.add(q.kind);
       this.current = q;

@@ -232,6 +232,19 @@ export const State = {
     };
   },
 
+  // When the next card comes round, so the app can say "Tuesday" instead of
+  // leaving "am I done?" as something to guess at.
+  nextDue(items, facetsFor) {
+    let soonest = Infinity;
+    for (const it of items) {
+      for (const f of (facetsFor ? facetsFor(it) : FACET_ORDER)) {
+        const c = this.data.cards[it.i + '|' + f];
+        if (c && c.st !== 'new' && c.due > now() && c.due < soonest) soonest = c.due;
+      }
+    }
+    return Number.isFinite(soonest) ? soonest : null;
+  },
+
   dueCount(items, facetsFor) {
     const t = now();
     let n = 0;

@@ -269,11 +269,27 @@ export const KINDS = {
       const mine = (it.g || []).map((g) => DB.groups.get(g)).filter(Boolean);
       if (!mine.length) return null;
       const g = pick(mine);
+      // SCORED, not shuffled. This was the one kind in the file that ignored the
+      // file's own doctrine — distractors were shuffle(others).slice(0,3) with a
+      // 30% chance of letting any group in the world through. Real output:
+      // "Grenada is one of… Atlantic Canada | The African Great Lakes | The
+      // Prairie provinces | The Windward Islands", and "Curaçao is one of…
+      // Central Asia". Five of eight sampled questions were free points, and for
+      // an app that looks this serious, silly is worse than hard.
+      //
+      // A group competes if it holds places near this one. The sibling group
+      // that actually argues with the answer — Leewards against Windwards
+      // against the Lesser Antilles — outranks anything from another ocean.
+      const near = new Set(nearMisses(it, ctx.pool, 12, { cruel: false }).map((o) => o.i));
       const others = [...DB.groups.values()]
         .filter((o) => o.id !== g.id && !(it.g || []).includes(o.id) && !(it.gc || []).includes(o.id))
-        .filter((o) => o.scope === g.scope || Math.random() < 0.3);
+        .map((o) => ({ o, overlap: (o.members || []).filter((m) => near.has(m)).length }))
+        .filter((x) => x.overlap > 0 || x.o.scope === g.scope)
+        .sort((a, b) => (b.overlap - a.overlap) || (a.o.scope === g.scope ? -1 : 1));
       if (others.length < 3) return null;
-      const wrong = shuffle(others).slice(0, 3);
+      // Take from the top of the ranking, with a little shuffle inside it so the
+      // same three do not come up every time.
+      const wrong = shuffle(others.slice(0, Math.max(3, Math.min(6, others.length)))).slice(0, 3).map((x) => x.o);
       return {
         form: 'options',
         prompt: withArticle(it) + ' is one of…',
@@ -314,6 +330,11 @@ export const KINDS = {
     facet: 'facts', form: 'options', label: 'Neighbours',
     can: (it) => (it.x?.bd || []).length > 0,
     build(it, ctx) {
+      // Fine worldwide, degenerate in an archipelago: the Caribbean's only land
+      // border is Saint Martin against Sint Maarten, so every sample was that
+      // same pair. Needs a pack with several borders in it to be a question.
+      const bordered = ctx.pool.filter((o) => (o.x?.bd || []).length).length;
+      if (bordered < 4) return null;
       const neighbours = (it.x.bd || []).map((c) => item('c:' + c)).filter(Boolean);
       if (!neighbours.length) return null;
       const answer = pick(neighbours);
@@ -338,6 +359,12 @@ export const KINDS = {
     facet: 'facts', form: 'options', label: 'Sub-region',
     can: (it) => !!(it.x?.sr || '').trim() && (it.k === 'country' || it.k === 'territory'),
     build(it, ctx) {
+      // Pointless inside one sub-region. In a Caribbean-only pack every sample
+      // is the same question — "which sub-region is X in? Caribbean | South
+      // America | North America | Central America" — because the three wrong
+      // answers can only come from outside the pack.
+      const here = new Set(ctx.pool.map((o) => (o.x?.sr || '').trim()).filter(Boolean));
+      if (here.size < 3) return null;
       const others = distinctByValue(it, ctx.pool, 3, (o) => o.x?.sr, { cruel: ctx.cruel });
       if (others.length < 3) return null;
       return {
@@ -515,9 +542,12 @@ export const KINDS = {
 
   largest: {
     facet: 'facts', form: 'options', label: 'Largest',
-    can: (it) => (it.x?.pop || 0) > 0,
+    can: (it) => (it.x?.pop || 0) >= 2000,
     build(it, ctx) {
-      const near = nearMisses(it, ctx.pool.filter((o) => (o.x?.pop || 0) > 0), 3, { cruel: ctx.cruel });
+      // A population FLOOR, not just a gap. The 2x rule below is trivially
+      // satisfied by an uninhabited rock: "Saint Thomas 52k · Tortola 24k ·
+      // Nevis 12k · Mona 1" collapses to "which of these is not deserted".
+      const near = nearMisses(it, ctx.pool.filter((o) => (o.x?.pop || 0) >= 2000), 3, { cruel: ctx.cruel });
       if (near.length < 3) return null;
       const all = [it, ...near];
       const ranked = all.slice().sort((a, b) => (b.x.pop || 0) - (a.x.pop || 0));
@@ -660,6 +690,32 @@ export function kindsFor(it, facet, ctx) {
 // order and returns the first that can actually assemble four options.
 export function buildQuestion(it, facet, ctx) {
   let ids = shuffle(kindsFor(it, facet, ctx));
+
+  // THE FIRST TIME YOU MEET A PLACE, YOU ARE SHOWN WHERE IT IS.
+  //
+  // The place facet offers three kinds — locate, shape and northernmost — and
+  // one was picked at random, so a brand-new island could open on "which of
+  // these is furthest north" against three others you had also never seen.
+  // Measured: the very first round of a fresh pack ran northernmost three
+  // times before anything else. That is a discrimination drill used as an
+  // introduction, and it is unanswerable by construction.
+  //
+  // Location is the cue everything else hangs on, so a first sighting asks for
+  // it. Shape and the comparisons come once there is something to compare.
+  if (ctx.first) {
+    const led = ids.filter((k) => k === 'locate');
+    if (led.length) ids = led.concat(ids.filter((k) => k !== 'locate'));
+  }
+
+  // AND NOT THE SAME KIND TWICE RUNNING. `avoid` only ever held the kinds asked
+  // of THIS card, so nothing stopped the same kind repeating across different
+  // items: 39% of questions repeated the previous question's kind, and day two
+  // opened with four locates in a row. `recent` carries the last couple of
+  // kinds served, whatever they were about.
+  if (ctx.recent?.length) {
+    const fresh = ids.filter((k) => !ctx.recent.includes(k));
+    if (fresh.length) ids = fresh;
+  }
   // When a card comes back inside the same round, ask it a DIFFERENT way where
   // one exists. Repeating the identical question tests recognition of the
   // question, not knowledge of the place.
