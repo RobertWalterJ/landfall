@@ -24,7 +24,7 @@ import { Round } from './session.js';
 import { MapView, onAiming } from './map.js';
 import { renderHero } from './hero.js';
 import { sweepSets, sweepStatus, recordSweep, matchName, listen, listenAvailable } from './sweep.js';
-import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking } from './speech.js';
+import { initSpeech, unlock, say, stop as stopSpeech, available as speechAvailable, onSpeaking, setRate } from './speech.js';
 import * as sound from './sound.js';
 
 const BUILD = 'dev (unstamped)';
@@ -146,10 +146,39 @@ function packStats(packIds) {
   return { items, ledger: State.packLedger(items, f), due: State.dueCount(items, f), facets: f };
 }
 
-function backBar(label, onBack) {
+// READ THIS SCREEN. Every explanatory screen gets a voice.
+//
+// The speaker buttons were on the question, the options, the verdict and the
+// Atlas facts — the whole question-and-answer path — and nowhere else. So the
+// densest prose in the app, which is the Progress screen explaining what "down
+// pat" and "known" and "secure" actually mean, had no way to be heard at all,
+// and the home screen advertised the Atlas as "read or listen" while half of
+// each card could only be read.
+//
+// It speaks what is on the screen, in the order it is on the screen, skipping
+// the controls.
+function readScreen() {
+  const root = document.getElementById('app') || document.body;
+  const parts = [];
+  for (const n of root.querySelectorAll('h1, .sentence, .lede, p, .label, .row-title, .row-sub, .stat, .mode-title, .mode-sub')) {
+    if (n.closest('button, .sheet-foot')) continue;
+    const t = n.textContent.replace(/\s+/g, ' ').trim();
+    if (t && !parts.includes(t)) parts.push(t);
+  }
+  return parts.join('. ').replace(/\.\s*\./g, '.');
+}
+
+function backBar(label, onBack, { speak = true } = {}) {
   return h('div', { class: 'head' },
     h('button', { class: 'icon-btn tap small', 'aria-label': 'Back', onclick: onBack, html: ICON.back }),
-    h('h1', { class: 'title' }, label));
+    h('h1', { class: 'title' }, label),
+    speak && speechAvailable()
+      ? h('button', {
+        class: 'say tap small', style: 'margin-left:auto', 'aria-label': 'Read this screen',
+        onclick: () => say(readScreen()),
+        html: ICON.speak,
+      })
+      : null);
 }
 
 // ── home ─────────────────────────────────────────────────────────────────
@@ -304,7 +333,7 @@ screens.setup = () => {
     seg('Questions per round', [[10, '10'], [14, '14'], [20, '20']], 'length'),
     h('div', { style: 'margin-top:var(--s5)' },
       h('div', { class: 'label' }, 'The detail'),
-      h('p', { class: 'lede', style: 'font-size:.95rem;margin:var(--s2) 0' },
+      h('p', { class: 'lede', style: 'margin:var(--s2) 0' },
         'Currency, language and what you call the people. Off by default: three currency questions in a round of fourteen crowd out three islands.'),
       h('div', { class: 'toggle' },
         h('button', { class: 'opt tap small', 'aria-pressed': String(!s.detail), onclick: () => { State.set({ detail: false }); go('setup'); } }, 'Places only'),
@@ -316,6 +345,7 @@ screens.setup = () => {
 let round = null;
 let mapView = null;
 let advanceTimer = null;
+const speechWatchers = [];
 let manualFromHere = false;
 
 async function startRound(opts = {}) {
@@ -751,11 +781,39 @@ function showVerdict(v, q) {
 
   const conf = !v.right && v.chosen ? State.confusionWeight(q.itemId, v.chosen) : 0;
   if (conf >= 2) {
+    // Into `lines` so it is READ ALOUD as well as shown. It used to be appended
+    // after the spoken string was built, which made the one piece of diagnosis
+    // on the screen the one piece you could not hear.
+    lines.push('You have mixed these two up more than once.');
     body.append(h('span', { class: 'chip' },
-      h('i', { class: 'dot', style: 'background:var(--vermilion)' }), 'untangle these later'));
+      h('i', { class: 'dot', style: 'background:var(--vermilion)' }), 'mixed up more than once'));
   }
 
-  const spoken = [v.label, context, ...lines].filter(Boolean).join('. ');
+  // Built for the EAR, separately from what is printed. Scraping the visible
+  // string gave "capital Havana..", said "The Greater Antilles" twice running
+  // because the context line and the first teach line derive from the same
+  // group, and left the interpuncts silent — so "one of the Greater Antilles ·
+  // capital Havana" was heard as a single run-on phrase. km² and × are read
+  // unpredictably by every engine, so they are spelled out.
+  const forEar = (t) => String(t)
+    .replace(/\s*·\s*/g, '. ')
+    .replace(/km²/g, 'square kilometres')
+    .replace(/(\d)\s*×/g, '$1 times')
+    .replace(/×/g, 'times')
+    .replace(/\s+/g, ' ')
+    .replace(/\.\s*\./g, '.')
+    .trim();
+  // The context line and the first teach line come from the same group, so
+  // "Cuba. The Greater Antilles. one of the Greater Antilles." was routine.
+  // Printed that reads as a heading and a sentence; spoken it is a stutter.
+  const spokenCtx = context && !lines.some((l) => l.toLowerCase().includes(String(context).toLowerCase()))
+    ? context : null;
+  const spokenBits = [v.label, spokenCtx, ...lines]
+    .filter(Boolean)
+    .map(forEar)
+    .filter((t, i, all) => all.indexOf(t) === i)          // never say it twice
+    .map((t) => t.replace(/\.$/, ''));
+  const spoken = spokenBits.join('. ') + '.';
   const sp = speakBtn(spoken, { klass: 'say tap small' });
   if (sp) {
     body.append(h('div', { style: 'display:flex;align-items:center;gap:var(--s2);margin-top:var(--s2)' },
@@ -801,11 +859,39 @@ function showVerdict(v, q) {
   // Pacing. A miss never auto-advances — a wrong answer is the moment the
   // learning happens, and it stays until it is dismissed. A hit waits 400ms a
   // word (about 150wpm, a fair figure for unfamiliar proper nouns), capped.
+  //
+  // AND SPEECH EXTENDS IT. DESIGN.md sets this out as Rule 3 and it was never
+  // built: the cap was six seconds, while a routine verdict is about 35 words
+  // and takes nearly thirteen to read at the app's own stated 150wpm. So the
+  // cap bound on almost every sheet and the read-aloud was cut off around
+  // 45% of the way through — which for the one reader this app exists for is
+  // the single most irritating thing it could do.
   const words = (v.label + ' ' + context + ' ' + lines.join(' ')).trim().split(/\s+/).filter(Boolean).length;
   const auto = State.settings().advance === 'auto';
+  const willSpeak = State.settings().speech === 'both';
   if (v.right && auto) {
-    const dwell = Math.min(6000, 900 + words * 400);
+    const read = Math.min(14000, 900 + words * 400);
+    // Nothing moves while the voice is still going. The utterance reports its
+    // own end, so this is the real length rather than an estimate; the timer
+    // is only the floor and the fallback if the engine never reports.
+    const dwell = willSpeak ? Math.max(read, 420 + words * 420) : read;
     advanceTimer = setTimeout(next, dwell);
+    // The utterance knows its own length; the timer above is only the floor and
+    // the fallback for an engine that never reports. When the voice actually
+    // stops, give it a beat and go.
+    if (willSpeak) {
+      let started = false;
+      const watch = (talking) => {
+        if (talking) { started = true; clearTimeout(advanceTimer); advanceTimer = null; return; }
+        if (!started) return;
+        const i = speechWatchers.indexOf(watch);
+        if (i >= 0) speechWatchers.splice(i, 1);
+        if (manualFromHere) return;                 // a tap already took it manual
+        clearTimeout(advanceTimer);
+        advanceTimer = setTimeout(next, 700);
+      };
+      speechWatchers.push(watch);
+    }
   }
 
   // Any tap other than Continue cancels the advance for good. It does not
@@ -816,6 +902,7 @@ function showVerdict(v, q) {
     manualFromHere = true;
     clearTimeout(advanceTimer);
     advanceTimer = null;
+    speechWatchers.length = 0;
   };
   sheetHost.addEventListener('pointerdown', cancel);
   veil.style.pointerEvents = 'none';
@@ -826,6 +913,7 @@ function showVerdict(v, q) {
 
 function next() {
   sound.advance();
+  stopSpeech();          // or the verdict keeps being read over the next question
   clearSheet();
   if (round.done) { go('summary'); return; }
   const wrap = document.querySelector('.round');
@@ -871,7 +959,7 @@ screens.summary = () => {
       const [head, sub] = ledgerSentence(ledger, p.short);
       return [
         h('p', { class: 'sentence', style: 'margin-top:var(--s5)' }, head),
-        h('p', { class: 'lede', style: 'font-size:.95rem' }, sub),
+        h('p', { class: 'lede' }, sub),
       ];
     })(),
     // HOW CLOSE, not just how many. On the map, a round where every miss was
@@ -888,7 +976,7 @@ screens.summary = () => {
         ? (mean < prior ? ` Closer than your usual ${d(prior).toLocaleString()} km.`
                         : ` Wider than your usual ${d(prior).toLocaleString()} km.`)
         : '';
-      return [h('p', { class: 'lede', style: 'font-size:.95rem;margin-top:var(--s3)' },
+      return [h('p', { class: 'lede', style: 'margin-top:var(--s3)' },
         s.mapMisses.length === 1
           ? `Your one map miss was about ${d(best).toLocaleString()} km out.${trend}`
           : `Your ${s.mapMisses.length} map misses averaged about ${d(mean).toLocaleString()} km out, the closest ${d(best).toLocaleString()} km.${trend}`)];
@@ -969,7 +1057,7 @@ screens.label = () => {
     h('div', { style: 'margin-top:var(--s5)' },
       h('div', { class: 'label' }, 'Which way round'),
       dirRow,
-      h('p', { class: 'lede muted', style: 'font-size:.9rem;margin-top:var(--s2)' },
+      h('p', { class: 'lede muted', style: 'margin-top:var(--s2)' },
         dir === 'fill'
           ? 'It names a place, you find it. The whole map is live.'
           : 'It lights up a place, you name it. Typed or spoken, and spelling is never marked.')),
@@ -1092,8 +1180,13 @@ screens.sweep = ({ key, dir }) => {
 
   function namePrompt(it) {
     const input = h('input', {
+      // spellcheck stays ON. It was off, which on Android and Safari also kills
+      // autocorrect and the suggestion strip — a first-class assistive tool,
+      // switched off in the one mode that asks a dyslexic user to type a
+      // French or Carib place name from memory. The matcher is generous by
+      // design; there is no reason to fight the keyboard as well.
       class: 'search', type: 'text', autocomplete: 'off', autocapitalize: 'words',
-      spellcheck: 'false', placeholder: 'What is it called?',
+      placeholder: 'What is it called?',
       onkeydown: (e) => { if (e.key === 'Enter') submit(); },
     });
     const submit = () => {
@@ -1113,18 +1206,29 @@ screens.sweep = ({ key, dir }) => {
               const mm = matchName(a, it, sweep.order);
               if (mm && !mm.ambiguous) { named(it, a); return; }
             }
+            // Nothing matched. Say so, rather than dropping a guess in the box
+            // and leaving him to work out why nothing happened.
             input.value = alts[0] || '';
+            const note = document.getElementById('heard-note');
+            if (note) note.textContent = alts[0]
+              ? `I heard "${alts[0]}" — tap Check, or edit it.`
+              : 'I did not catch that.';
           }, () => btn.classList.remove('on'));
         },
         html: svg('<path d="M12 4.5a2.6 2.6 0 0 1 2.6 2.6v4.4a2.6 2.6 0 0 1-5.2 0V7.1A2.6 2.6 0 0 1 12 4.5z"/><path d="M6.5 11.3a5.5 5.5 0 0 0 11 0M12 16.8V20"/>'),
       });
       row.append(mic);
     }
-    row.append(h('button', { class: 'btn tap', style: 'width:auto;padding:0 var(--s5);min-height:48px', onclick: submit }, 'Say'));
+    // "Say" sat next to a microphone and submitted TYPED text.
+    row.append(h('button', { class: 'btn tap', style: 'width:auto;padding:0 var(--s5);min-height:48px', onclick: submit }, 'Check'));
     return h('div', {},
       h('div', { class: 'frame' }, 'Name this'),
-      h('div', { class: 'prompt-sub', style: 'margin-top:4px' }, 'Spelling is never marked.'),
-      row);
+      h('div', { class: 'prompt-sub', style: 'margin-top:4px' },
+        'Spell it however you like — I will show you the spelling afterwards.'),
+      row,
+      listenAvailable()
+        ? h('p', { class: 'prompt-sub', id: 'heard-note', style: 'margin-top:var(--s2)' }, 'Or tap the microphone and say it instead.')
+        : null);
   }
 
   // ── answering ───────────────────────────────────────────────────────
@@ -1275,7 +1379,7 @@ screens.sweep = ({ key, dir }) => {
 
     const panel = h('div', { class: 'bubble', style: 'margin-top:var(--s3)' },
       h('p', { class: 'sentence' }, `${set.name} — ${sweep.order.length} of ${sweep.order.length}.`),
-      h('p', { class: 'lede', style: 'font-size:.95rem' },
+      h('p', { class: 'lede' },
         [`${sweep.firstTime} named first time`,
           sweep.afterMiss ? `${sweep.afterMiss} after a miss` : null,
           sweep.given.length ? `${sweep.given.length} given` : null]
@@ -1450,7 +1554,7 @@ screens.atlasItem = ({ id, from }) => {
     it.note ? h('p', { class: 'lede', style: 'margin-top:var(--s3)' }, it.note) : null,
     contested.length ? h('div', { class: 'bubble', style: 'margin-top:var(--s4)' },
       h('div', { class: 'label' }, 'Contested'),
-      contested.map((g) => h('p', { class: 'lede', style: 'font-size:.95rem;margin-top:var(--s2)' },
+      contested.map((g) => h('p', { class: 'lede', style: 'margin-top:var(--s2)' },
         `Whether ${it.n} belongs to ${g.name} is argued both ways. ${g.note || ''}`))) : null,
     body,
     inside.length ? h('div', { style: 'margin-top:var(--s6)' },
@@ -1508,9 +1612,9 @@ screens.progress = () => {
     backBar('Progress', () => go('home')),
     ...(() => {
       const [head, sub] = ledgerSentence(ledger, p.short);
-      return [h('p', { class: 'sentence' }, head), h('p', { class: 'lede', style: 'font-size:.95rem' }, sub)];
+      return [h('p', { class: 'sentence' }, head), h('p', { class: 'lede' }, sub)];
     })(),
-    h('p', { class: 'lede muted', style: 'font-size:.85rem;margin-top:var(--s2)' },
+    h('p', { class: 'lede muted', style: 'margin-top:var(--s2)' },
       'Down pat is three right in a row — today counts. Known is still there after three weeks, secure after three months; those two are about time and cannot be rushed.'),
     mapBox,
     h('div', { class: 'grid2', style: 'margin-top:var(--s5)' },
@@ -1527,17 +1631,17 @@ screens.progress = () => {
         h('div', { class: 'label', style: 'margin-top:6px' }, 'down pat'))),
     h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'To review'),
-      h('p', { class: 'lede', style: 'font-size:.95rem' },
+      h('p', { class: 'lede' },
         due > 0
           ? `${due} ${due === 1 ? 'thing has' : 'things have'} come round again. Spacing them out is what moves them from "down pat" to knowing them — a round now is worth more than a round tomorrow.`
           : 'Nothing has come round yet. Anything you play now is practice rather than review, which is fine but counts for less.')),
     lapsing.length ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'Going grey'),
-      h('p', { class: 'lede', style: 'font-size:.95rem' },
+      h('p', { class: 'lede' },
         `${lapsing.length} ${lapsing.length === 1 ? 'place is' : 'places are'} overdue by more than half their own interval. They are shown faded because that is what has happened to the memory.`)) : null,
     drills.length ? h('div', { style: 'margin-top:var(--s6)' },
       h('div', { class: 'label' }, 'Mixed-up pairs'),
-      h('p', { class: 'lede', style: 'font-size:.95rem' },
+      h('p', { class: 'lede' },
         'Two places you have swapped for each other more than once. Tapping one runs a short drill that puts just those two head to head, which is the fastest way to stop confusing them.'),
       drillRows) : null);
 };
@@ -1547,7 +1651,7 @@ screens.settings = () => {
   const s = State.settings();
   const seg = (label, note, opts, key, after = null) => h('div', { style: 'margin-top:var(--s6)' },
     h('div', { class: 'label' }, label),
-    note ? h('p', { class: 'lede', style: 'font-size:.95rem;margin:var(--s2) 0' }, note) : null,
+    note ? h('p', { class: 'lede', style: 'margin:var(--s2) 0' }, note) : null,
     h('div', { class: 'toggle' }, opts.map(([v, text]) => h('button', {
       class: 'opt tap small', 'aria-pressed': String(s[key] === v),
       onclick: () => { State.set({ [key]: v }); if (after) after(v); go('settings'); },
@@ -1557,6 +1661,8 @@ screens.settings = () => {
     backBar('Settings', () => go('home')),
     seg('Read aloud', 'The speaker buttons are always there. This is only about what speaks on its own.',
       [['manual', 'Only when I tap'], ['prompt', 'The question'], ['both', 'Question and answer'], ['off', 'No buttons']], 'speech'),
+    seg('Reading speed', 'How fast the voice reads. Nothing moves on while it is still talking.',
+      [[0.8, 'Slower'], [0.97, 'Normal'], [1.15, 'Faster']], 'rate', (v) => { setRate(v); say('Like this.'); }),
     seg('Move on', 'A miss never moves on by itself, whatever this says.',
       [['auto', 'After a pause'], ['tap', 'Only when I tap']], 'advance'),
     seg('Clock', 'Off by default. A clock measures how fast you read, not what you know.',
@@ -1566,9 +1672,9 @@ screens.settings = () => {
     h('div', { class: 'sep' }),
     h('div', { class: 'label' }, 'About'),
     h('p', { class: 'sentence' }, 'Landfall ' + BUILD),
-    h('p', { class: 'lede muted', style: 'font-size:.85rem' },
+    h('p', { class: 'lede muted' },
       'Version, when it was built, and the change it came from. The app checks for a newer one each time you open it.'),
-    h('p', { class: 'lede', style: 'font-size:.95rem;margin-top:var(--s3)' },
+    h('p', { class: 'lede', style: 'margin-top:var(--s3)' },
       ` Shapes and places from Natural Earth (public domain) and world-countries (ODbL); flags from flag-icons (MIT). Island names, regional groupings and corrections are hand-checked — see build/report.txt for everything the build could not resolve.`),
     h('button', {
       class: 'btn quiet tap', style: 'margin-top:var(--s6)',
@@ -1590,6 +1696,7 @@ async function boot() {
   applyTheme();
   initSpeech();
   sound.setSound(State.settings().sound);
+  setRate(State.settings().rate);
   visit = Number(localStorage.getItem('landfall.visits') || 0) + 1;
   try { localStorage.setItem('landfall.visits', String(visit)); } catch { /* fine */ }
 
@@ -1599,7 +1706,12 @@ async function boot() {
 
   // Read-aloud is an accessibility feature here, not a garnish, so the effects
   // duck out of its way rather than talking over it.
-  onSpeaking(sound.setSpeaking);
+  // One callback, several listeners: the sound bus ducks under the voice, and
+  // the verdict waits for it to finish before moving on.
+  onSpeaking((talking) => {
+    sound.setSpeaking(talking);
+    for (const fn of [...speechWatchers]) fn(talking);
+  });
   onAiming(sound.aim);
 
   // ONE TICK PER TAP, wired once rather than at four dozen call sites. The map

@@ -95,6 +95,7 @@ function blank() {
       length: 14,
       clock: 0,              // seconds per question; 0 = no clock. The default.
       speech: 'manual',      // off | manual | prompt | both — manual = buttons, nothing speaks at you
+      rate: 0.97,            // reading speed; being able to slow a voice is an accommodation
       sound: false,
       advance: 'auto',       // auto | tap
       theme: 'system',

@@ -338,8 +338,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .mode.lead { box-shadow: var(--shadow-2); }
 .mode-text { flex: 1; min-width: 0; }
 .mode-title { display: block; font: 600 1.125rem/1.2 var(--font-use); color: var(--ink); }
+/* Wraps rather than truncates. "spaced, untimed, until you are up to date"
+   measured 249px in a 249px box at 375px wide — zero slack, and it clips
+   outright on a 320px phone or at larger OS text sizes. Guessing at a
+   truncated string is a specific cost for a dyslexic reader. */
 .mode-sub { display: block; font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: 2px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+     }
 .mode-status { display: flex; align-items: center; gap: 6px; font: 600 .8125rem/1 var(--font-use); color: var(--ink-2); }
 .mode-status .n { font: 700 1.125rem/1 var(--font-read); font-variant-numeric: tabular-nums; color: var(--ink); }
 .chev { width: 16px; height: 16px; flex: none; color: var(--ink-3); stroke: currentColor; stroke-width: 2;
@@ -368,9 +372,15 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .frame b { color: var(--vermilion); font-weight: 700; }
 .subject {
   font: 700 clamp(2.1rem, 9vw, 3rem)/1.05 var(--font-read);
-  letter-spacing: -.02em; color: var(--ink); margin-top: 6px; text-wrap: balance;
+  /* No negative tracking on the word the whole app is about. Tightening
+     letterforms increases crowding, and crowding is the mechanism most
+     directly implicated in dyslexic reading difficulty (Zorzi et al. 2012
+     found extra letter spacing improved reading speed and accuracy with no
+     training at all). The wordmark keeps its tracking — that is a logotype,
+     not something you read. */
+  letter-spacing: 0; color: var(--ink); margin-top: 6px; text-wrap: balance;
 }
-.subject.plain { font: 600 clamp(1.5rem, 6.5vw, 1.9rem)/1.25 var(--font-read); letter-spacing: -.01em; }
+.subject.plain { font: 600 clamp(1.5rem, 6.5vw, 1.9rem)/1.25 var(--font-read); letter-spacing: 0; }
 .prompt-sub { font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: var(--s2); }
 
 .say {
@@ -579,9 +589,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .sheet-glyph { width: 28px; height: 28px; flex: none; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .sheet-head.right .sheet-glyph { stroke: var(--verdigris); }
 .sheet-head.wrong .sheet-glyph { stroke: var(--vermilion); }
-.sheet-answer { font: 700 clamp(1.6rem, 7vw, 2rem)/1.15 var(--font-read); color: var(--ink); letter-spacing: -.01em; }
+.sheet-answer { font: 700 clamp(1.6rem, 7vw, 2rem)/1.15 var(--font-read); color: var(--ink); letter-spacing: 0; }
 .sheet-context { font: 400 .875rem/1.4 var(--font-use); color: var(--ink-3); margin-top: 3px; }
 .sheet-body { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: var(--s3); }
+/* Letter-spacing shipped; word-spacing did not. DESIGN.md asks for both, and
+   both are small and measurably useful against letter-crowding, which is the
+   mechanism most directly implicated in dyslexic reading difficulty. */
+.sheet-body p, .lede, .sentence, .prompt-sub, .mode-sub, .row-sub { word-spacing: .04em; }
 /* The locator inside the verdict: small, fixed, and always the first thing.
    You are told where it is before you are told anything about it. */
 .mapwell.locator { flex: none; height: 130px; min-height: 0; margin-bottom: var(--s3); }
@@ -602,7 +616,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ── generic screen furniture ───────────────────────────────────────── */
-.title { font: 600 1.5rem/1.25 var(--font-read); letter-spacing: -.01em; margin: var(--s4) 0 var(--s2); }
+.title { font: 600 1.5rem/1.25 var(--font-read); letter-spacing: 0; margin: var(--s4) 0 var(--s2); }
 .lede { font: 400 1.0625rem/1.65 var(--font-read); color: var(--ink-2); max-width: 60ch; text-wrap: pretty; }
 .head { display: flex; align-items: center; gap: var(--s2); padding-top: var(--s2); }
 .head .title { margin: 0; }

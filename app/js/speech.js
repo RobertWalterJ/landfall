@@ -47,7 +47,14 @@ export function unlock() {
 
 export function available() { return 'speechSynthesis' in window; }
 
-export function say(text, { rate = 0.97 } = {}) {
+// The reading speed is a setting, not a constant. Being able to slow a voice
+// down is a standard accommodation, and 0.97 is only right for whoever picked
+// it. Set by app.js from the stored preference.
+let rate = 0.97;
+export function setRate(r) { rate = Math.max(0.6, Math.min(1.3, Number(r) || 0.97)); }
+
+export function say(text, opts = {}) {
+  const spoken = opts.rate || rate;
   if (!text || !('speechSynthesis' in window)) return;
   try {
     speechSynthesis.cancel();
@@ -55,7 +62,7 @@ export function say(text, { rate = 0.97 } = {}) {
     const u = new SpeechSynthesisUtterance(String(text));
     if (!voice) voice = choose();
     if (voice) { u.voice = voice; u.lang = voice.lang; }
-    u.rate = rate;
+    u.rate = spoken;
     u.onstart = () => { onState?.(true); armGuard(4 + String(text).split(/\s+/).length * 0.9); };
     u.onend = () => { clearTimeout(guard); onState?.(false); };
     u.onerror = () => { clearTimeout(guard); onState?.(false); };
